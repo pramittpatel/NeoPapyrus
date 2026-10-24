@@ -2,12 +2,16 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
+import Citation from "./Citation";
+import AutoGrowTextarea from "./AutoGrowTextarea";
 import CiteStyleToggle from "./CiteStyleToggle";
 import Combobox from "./Combobox";
 import ErrorNote from "./ErrorNote";
-import { Check, ChevronRight, Close, Copy, Download, Folder, Graph, Refresh, Send, SidebarRight, Spark, Table } from "./Icons";
+import { LevelBadge, parseLevel, saveLevel } from "./LevelSlider";
+import { Book, Check, ChevronRight, Close, Copy, Download, Folder, Graph, Refresh, Send, SidebarRight, Table } from "./Icons";
 import Rich from "./Rich";
 import Topbar from "./Topbar";
+import { buildAnswerCopy, buildCitationFile, buildCitationsCopy } from "@/lib/copyFormat";
 import { csvCell, download } from "@/lib/download";
 import { STANCE_LABEL, type AnswerResult } from "@/lib/format";
 import { useCiteStyle, useCopy, useFlash, useTitle } from "@/lib/hooks";
@@ -21,9 +25,11 @@ export default function AnswerView() {
   const q = params.get("q") ?? "";
   const deep = params.get("deep") === "1";
   const collection = params.get("c") ?? "all";
+  const level = parseLevel(params.get("l"));
   const collections = useCollections();
   const [style, setStyle] = useCiteStyle();
   const [copied, copy] = useCopy();
+  const [copiedRefs, copyRefs] = useCopy();
   const [flash, goToSource] = useFlash("source");
 
   const [res, setRes] = useState<AnswerResult | null>(null);
@@ -38,12 +44,12 @@ export default function AnswerView() {
   useEffect(() => {
     if (!q) { router.replace("/"); return; }
     const cached = loadResult();
-    if (nonce === 0 && cached && cached.question === q && (cached.collection ?? "all") === collection && !!cached.deep === deep) {
+    if (nonce === 0 && cached && cached.question === q && (cached.collection ?? "all") === collection && !!cached.deep === deep && (cached.level ?? "Undergrad") === level) {
       setRes(cached); setErr(null); return;
     }
     const ctl = new AbortController();
     setRes(null); setErr(null);
-    fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q, deep, collection }), signal: ctl.signal })
+    fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q, deep, collection, level }), signal: ctl.signal })
       .then(async (r) => {
         const d = await r.json();
         if (!r.ok) throw new Error(d.error ?? "Something went wrong.");
@@ -51,15 +57,20 @@ export default function AnswerView() {
       })
       .catch((e: Error) => { if (e.name !== "AbortError") setErr(e.message); });
     return () => ctl.abort();
-  }, [q, deep, collection, nonce, router]);
+  }, [q, deep, collection, level, nonce, router]);
 
-  const scope = { deep, c: collection };
-  const ask = (e: FormEvent) => {
-    e.preventDefault();
+  const scope = { deep, c: collection, level };
+  const changeLevel = (v: typeof level) => { saveLevel(v); router.push(answerHref(q, { ...scope, level: v })); };
+  const sendFollow = () => {
     const t = follow.trim();
     if (t) { setFollow(""); router.push(answerHref(t, scope)); }
   };
-  const exportCitations = () => res && download(`citations-${style.toLowerCase()}.${style === "BibTeX" ? "bib" : "txt"}`, res.papers.map((p) => p.citations[style]).join("\n\n"));
+  const ask = (e: FormEvent) => { e.preventDefault(); sendFollow(); };
+  const exportCitations = () => {
+    if (!res) return;
+    const f = buildCitationFile(res.papers, style);
+    download(f.name, f.body, f.mime);
+  };
   const exportCsv = () => {
     if (!res) return;
     const head = ["#", "Title", "Authors", "Year", "Venue", "Topic", "Stance", "URL"];
@@ -74,20 +85,18 @@ export default function AnswerView() {
     <>
       <Topbar back="history" title={q}>
         <Combobox label="Collection" prefix="Collection:" icon={<Folder size={14} />} align="end" options={collections}
-          value={collection} onChange={(c) => router.push(answerHref(q, { deep, c }))} searchPlaceholder="Search collections…" />
+          value={collection} onChange={(c) => router.push(answerHref(q, { ...scope, c }))} searchPlaceholder="Search collections…" />
         {hasPapers && <button className="icon-btn" aria-label="Toggle artifact panel" aria-pressed={panel} onClick={() => setPanel((p) => !p)}><SidebarRight /></button>}
       </Topbar>
 
       <div className="answer-wrap">
         <main className="answer-main">
           <div className="col">
-            <div className="bubble-row"><div className="bubble">{q}</div></div>
-
             {err && <ErrorNote message={err} onRetry={() => setNonce((n) => n + 1)} />}
 
             {!res && !err && (
               <div className="article" aria-live="polite" aria-busy="true">
-                <div className="status"><Spark size={14} stroke="#D97757" />Splitting your question, searching the papers and checking passages…</div>
+                <div className="status"><span className="spinner" aria-hidden="true" />Splitting your question, searching the papers and checking passages…</div>
                 <div className="skeleton"><i style={{ width: "38%", height: 20 }} /><i /><i style={{ width: "92%" }} /><i style={{ width: "86%" }} /><i style={{ width: "60%" }} /></div>
               </div>
             )}
@@ -96,7 +105,7 @@ export default function AnswerView() {
               <>
                 <article className="article">
                   <div className="status">
-                    <Spark size={14} stroke="#D97757" />
+                    <span className="done"><Check size={14} /></span>
                     Searched {res.stats.papers} {res.stats.papers === 1 ? "paper" : "papers"} · read {res.stats.passages} passages · cited {res.stats.cited}
                   </div>
                   <h1>{res.title}</h1>
@@ -125,7 +134,7 @@ export default function AnswerView() {
                         {res.papers.map((p) => (
                           <li key={p.file} id={`source-${p.n}`} className={flash === p.n ? "flash" : undefined}>
                             <span className="cite block">{p.n}</span>
-                            <span className={`c${style === "BibTeX" ? " mono" : ""}`}>{p.citations[style]}</span>
+                            <span className={`c${style === "BibTeX" ? " mono" : ""}`}><Citation paper={p} style={style} peers={res.papers} /></span>
                             <Link className="why" href={sourceHref(p.n, q, scope)}>Why this?</Link>
                           </li>
                         ))}
@@ -135,10 +144,15 @@ export default function AnswerView() {
                 )}
 
                 <div className="actions">
-                  <button className="icon-btn sm" title="Copy answer" aria-label="Copy answer" onClick={() => copy(`${res.title}\n\n${res.answer.replace(/\*\*/g, "")}`)}>
+                  <button className="icon-btn sm" title="Copy answer" aria-label="Copy answer" onClick={() => copy(buildAnswerCopy(res, style))}>
                     {copied ? <Check size={16} /> : <Copy size={16} />}
                   </button>
-                  {hasPapers && <button className="icon-btn sm" title={`Download citations (${style})`} aria-label="Download citations" onClick={exportCitations}><Download size={16} /></button>}
+                  {hasPapers && (
+                    <button className="icon-btn sm" title="Copy references" aria-label="Copy references" onClick={() => copyRefs(buildCitationsCopy(res.papers, style))}>
+                      {copiedRefs ? <Check size={16} /> : <Book size={16} />}
+                    </button>
+                  )}
+                  {hasPapers && <button className="icon-btn sm" title={style === "BibTeX" ? "Download citations (.bib)" : `Download reference list (${style}, .rtf for Word/Docs)`} aria-label="Download citations" onClick={exportCitations}><Download size={16} /></button>}
                   <button className="icon-btn sm" title="Regenerate answer" aria-label="Regenerate answer" onClick={() => setNonce((n) => n + 1)}><Refresh size={16} /></button>
                 </div>
               </>
@@ -148,7 +162,8 @@ export default function AnswerView() {
           <div className="follow">
             <form className="composer row" onSubmit={ask}>
               <label htmlFor="followup" className="sr-only">Ask another question</label>
-              <input id="followup" value={follow} onChange={(e) => setFollow(e.target.value)} maxLength={500} placeholder="Ask another question…" />
+              <AutoGrowTextarea id="followup" value={follow} onChange={(e) => setFollow(e.target.value)} onEnter={sendFollow} maxLength={500} placeholder="Ask another question…" />
+              <LevelBadge value={level} onChange={changeLevel} />
               <button type="submit" className="send" aria-label="Send" disabled={!follow.trim()}><Send size={16} /></button>
             </form>
             <div className="meta-row">

@@ -22,12 +22,21 @@ export type PaperResult = {
   passage: string;
   usedIn: string;
   citations: Record<CiteStyle, string>;
+  /** Styled reference (italic runs). Absent on results cached before it existed: use citationOf() from lib/cite. */
+  citationParts?: CitationParts;
+  /** In-text citation per style: "(Shoham & Rappoport, 2023)", "(Shoham and Rappoport)", "\cite{key}". */
+  inText?: Record<CiteStyle, string>;
 };
+
+/** A run of citation text; italic where the style requires it (journal, preprint title). */
+export type Segment = { text: string; italic?: boolean };
+export type CitationParts = Record<CiteStyle, Segment[]>;
 
 export type AnswerResult = {
   id: string;
   question: string;
   collection: string;
+  level: ExplainLevel;
   title: string;
   answer: string;
   stats: { papers: number; passages: number; cited: number };
@@ -49,3 +58,17 @@ export function ordinal(n: number) {
   const s = ["th", "st", "nd", "rd"], v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
+
+export type PaperSource = "team" | "arxiv";
+
+/** Collections are either a source ("src:team", "src:arxiv") or a topic family; "all" matches everything. */
+export function matchesCollection(p: { family: string | null; source: PaperSource | string | null }, collection: string) {
+  if (collection === "all") return true;
+  if (collection.startsWith("src:")) return p.source === collection.slice(4);
+  return p.family === collection;
+}
+
+export const SOURCE_LABEL: Record<PaperSource, string> = { team: "Team papers", arxiv: "arXiv papers" };
+
+export const EXPLAIN_LEVELS = ["High-schooler", "Undergrad", "PhD"] as const;
+export type ExplainLevel = (typeof EXPLAIN_LEVELS)[number];

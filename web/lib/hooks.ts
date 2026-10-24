@@ -10,13 +10,21 @@ export function useCiteStyle(): [CiteStyle, (s: CiteStyle) => void] {
   return [style, useCallback((s: CiteStyle) => { setStyle(s); saveStyle(s); }, [])];
 }
 
-/** copy(text) -> `copied` is true for 1.5s; failures (insecure origin, denied permission) leave it false. */
-export function useCopy(): [boolean, (text: string) => Promise<void>] {
+export type CopyPayload = string | { text: string; html?: string };
+
+/** copy(payload) -> `copied` is true for 1.5s; rich HTML is used when supported, failures (insecure origin, denied permission) leave it false. */
+export function useCopy(): [boolean, (payload: CopyPayload) => Promise<void>] {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
-  const copy = useCallback(async (text: string) => {
-    try { await navigator.clipboard.writeText(text); } catch { return; }
+  const copy = useCallback(async (payload: CopyPayload) => {
+    const { text, html } = typeof payload === "string" ? { text: payload, html: undefined } : payload;
+    try {
+      if (!html || typeof ClipboardItem === "undefined") throw 0;
+      await navigator.clipboard.write([new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) })]);
+    } catch {
+      try { await navigator.clipboard.writeText(text); } catch { return; }
+    }
     setCopied(true); clearTimeout(timer.current); timer.current = setTimeout(() => setCopied(false), 1500);
   }, []);
   return [copied, copy];

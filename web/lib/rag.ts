@@ -1,4 +1,5 @@
 import { tidy } from "./cite";
+import { matchesCollection, type PaperSource } from "./format";
 import { query } from "./snowflake";
 
 export const MODEL = process.env.CORTEX_MODEL ?? "llama3.3-70b";
@@ -65,7 +66,7 @@ export function serverError(e: unknown) {
 
 export type Meta = {
   file: string; title: string; authors: string[]; family: string;
-  arxivId: string; year: string; venue: string; url: string;
+  arxivId: string; year: string; venue: string; url: string; source: PaperSource;
 };
 
 let metaCache: Promise<Record<string, Meta>> | null = null;
@@ -77,17 +78,21 @@ export function paperMeta() {
       const out: Record<string, Meta> = {};
       for (const r of rows) {
         const m = (typeof r.META === "string" ? JSON.parse(r.META) : r.META ?? {}) as Record<string, unknown>;
-        const id = r.FILE.split("_")[0];
-        const yy = /^(\d{2})\d{2}\./.exec(id)?.[1];
-        const year = yy ? String(2000 + Number(yy)) : "";
-        const fallback = r.FILE.replace(/\.pdf$/i, "").split("_").slice(1).join(" ");
+        const arxiv = /^(?:\d{4}\.\d{4,5}|[a-z-]+_\d{7})v\d+(?=_)/.exec(r.FILE)?.[0] ?? "";
+        const arxivId = arxiv.replace("_", "/");
+        const yy = /^(\d{2})\d{2}\./.exec(arxiv)?.[1];
+        const metaYear = typeof m.year === "string" && /^\d{4}$/.test(m.year.trim()) ? m.year.trim() : "";
+        const year = metaYear || (yy ? String(2000 + Number(yy)) : "");
+        const fallback = r.FILE.replace(/\.pdf$/i, "").split("_").slice(arxiv ? 1 : 0).join(" ");
+        const venue = typeof m.venue === "string" && m.venue.trim() ? m.venue.trim() : arxiv ? `arXiv${year ? ` ${year}` : ""}` : "";
         out[r.FILE] = {
           file: r.FILE,
           title: typeof m.title === "string" && m.title ? m.title : fallback,
           authors: Array.isArray(m.authors) ? (m.authors as string[]).filter((x) => typeof x === "string").map(tidy) : [],
           family: typeof m.family === "string" && m.family ? m.family : "Uncategorized",
-          arxivId: id, year, venue: year ? `arXiv ${year}` : "arXiv",
-          url: /^\d{4}\.\d+/.test(id) ? `https://arxiv.org/abs/${id.replace(/v\d+$/, "")}` : "",
+          arxivId, year, venue,
+          url: arxivId ? `https://arxiv.org/abs/${arxivId.replace(/v\d+$/, "")}` : "",
+          source: m.source === "team" || m.source === "arxiv" ? m.source : arxiv ? "arxiv" : "team",
         };
       }
       return out;
@@ -103,4 +108,10 @@ export async function completeJson<T>(prompt: string): Promise<T | null> {
   if (start < 0) return null;
   const end = Math.max(text.lastIndexOf("}"), text.lastIndexOf("]"));
   try { return JSON.parse(text.slice(start, end + 1)) as T; } catch { return null; }
+}
+
+/** Files in a collection ("all" -> undefined, meaning no filter). */
+export async function scopeFor(collection: unknown): Promise<string[] | undefined> {
+  if (typeof collection !== "string" || collection === "all") return undefined;
+  return Object.values(await paperMeta()).filter((m) => matchesCollection(m, collection)).map((m) => m.file);
 }

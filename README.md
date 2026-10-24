@@ -52,15 +52,28 @@ Laptop -> papercourt_cli.py -> vector search (connector) + Cortex REST API -> an
 
 ## Web app (Next.js)
 
-`web/` is the main site. Server-side API routes (`web/app/api/*`) talk to Snowflake through the Node SDK, so credentials never reach the browser.
+`web/` is the main site, built from the design prototypes. Server-side route handlers (`web/app/api/*`) talk to Snowflake through the Node SDK, so credentials never reach the browser.
 
 ```
 cd web && npm install
 cp ../.env .env.local        # SNOWFLAKE_ACCOUNT / USER / PASSWORD / ROLE / WAREHOUSE, optional CORTEX_MODEL
-npm run dev                  # http://localhost:3000
+npm run dev -- -p 3000       # http://localhost:3000
 ```
 
-Pages: Ask (cited answer, clickable `[n]` citations that open the source passage, verdict badges, level selector), Debate, Gaps, Library. `streamlit_app.py` remains as a fallback.
+| Screen | What it does |
+|---|---|
+| Home | Ask a question; scope it to a collection (team papers, arXiv papers or a topic); Deep search runs more queries |
+| Answer | Cited answer; clicking a `[n]` chip jumps to that source; evidence matrix and topic map panel; APA / MLA / BibTeX; copy as formatted text; download citations |
+| Source | Why the paper was chosen (sub-question, query, passage, where the answer uses it) next to the real PDF, opened to the cited page |
+| Library | Every indexed paper with a typeable filter, collection filter and saved papers |
+| Debate / Gaps | Two papers argue one question; agree / disagree / open-gaps summary |
+
+How an answer is built: the question is split into sub-questions, each is searched with the Cortex Search Service, results are merged by paper, the model writes a cited answer from those passages, and each cited paper gets a short stance and summary. Citations are generated from paper metadata, not by the model. The PDF page is found by matching the passage against per-page text stored in `paper_pages`.
+
+## Adding papers
+
+1. Put PDFs on the stage: `python upload_papers.py` (from `papers/`), or copy them from another stage with `COPY FILES INTO @PAPERCOURT.PUBLIC.papers FROM @<db>.<schema>.<stage>`.
+2. `python ingest.py` indexes only what is new (pages, chunks, library cards, citation metadata, topics) and rebuilds the search service. `fetch_papers.py` downloads more arXiv papers politely and can be re-run.
 
 ## Why a web app
 

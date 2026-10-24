@@ -2,11 +2,18 @@ import { buildCitations } from "@/lib/cite";
 import { locatePage } from "@/lib/pages";
 import { ordinal, splitFile, type AnswerResult, type PaperResult, type Stance } from "@/lib/format";
 import {
-  complete, completeJson, fail, logQuestion, paperMeta, readQuestion, retrieve, serverError, type Hit, type Meta,
+  complete, completeJson, fail, logQuestion, paperMeta, readQuestion, retrieve, scopeFor, serverError, type Hit, type Meta,
 } from "@/lib/rag";
 
 type SubQ = { question: string; query: string };
 type Found = { file: string; subIdx: number; rank: number; of: number; chunks: Hit[] };
+
+const LEVELS = {
+  "High-schooler": "Write for a high-school student: plain everyday words, define every technical term in a few words, short sentences, no jargon or metric names without explanation.",
+  Undergrad: "Write for an undergraduate: standard terminology is fine, briefly explain specialised terms and methods.",
+  PhD: "Write for a PhD researcher: precise technical language, name methods, datasets and metrics, note limitations and how strong the evidence is.",
+} as const;
+type Level = keyof typeof LEVELS;
 
 const CITE = /\[(\d+(?:\s*,\s*\d+)*)\]/g;
 const clean = (t: string) => t.replace(/^#+\s*/gm, "").replace(/\n{3,}/g, "\n\n").trim();
@@ -27,10 +34,11 @@ export async function POST(req: Request) {
   const question = readQuestion(body.question);
   if (!question) return fail("Enter a question of up to 500 characters.");
   const deep = body.deep === true;
+  const level: Level = body.level in LEVELS ? body.level : "Undergrad";
   try {
     const [meta, subqs] = await Promise.all([paperMeta(), decompose(question, deep ? 3 : 2)]);
-    const collection = typeof body.collection === "string" && body.collection !== "all" ? body.collection : "all";
-    const scope = collection === "all" ? undefined : Object.values(meta).filter((m) => m.family === collection).map((m) => m.file);
+    const collection = typeof body.collection === "string" ? body.collection : "all";
+    const scope = await scopeFor(collection);
     if (scope && scope.length === 0) return fail("That collection has no papers. Pick another collection.");
 
     // Search each sub-question separately, then merge papers by best rank.
@@ -53,7 +61,7 @@ export async function POST(req: Request) {
     const passages = lists.reduce((n, l) => n + l.length, 0);
 
     const label = (f: Found): Meta =>
-      meta[f.file] ?? { file: f.file, title: splitFile(f.file).rest, authors: [], family: "Uncategorized", arxivId: "", year: "", venue: "arXiv", url: "" };
+      meta[f.file] ?? { file: f.file, title: splitFile(f.file).rest, authors: [], family: "Uncategorized", arxivId: "", year: "", venue: "", url: "", source: "team" };
     const context = candidates.map((f, i) => {
       const m = label(f);
       return `[${i + 1}] ${m.title}${m.year ? ` (${m.year})` : ""}\n${f.chunks.map((c) => clean(c.chunk)).join("\n---\n")}`;
@@ -65,7 +73,8 @@ export async function POST(req: Request) {
         "Then one short intro paragraph. If the sources fall into distinct groups, a numbered list where each item starts " +
         "with a **bold lead.** and then one or two sentences. Finish with a line starting '**Short answer:**'.\n" +
         "Cite every claim with its source number like [1] or [1, 3]. Use only numbers that appear below. " +
-        "If the sources do not answer the question, say so plainly. Under 220 words.\n\n" +
+        "If the sources do not answer the question, say so plainly. Under 220 words.\n" +
+        `${LEVELS[level]}\n\n` +
         `Sources:\n${context}\n\nQuestion: ${question}`,
     );
 
@@ -123,20 +132,20 @@ export async function POST(req: Request) {
       const authors = m.authors ?? [];
       const authorLine = authors.length > 3 ? `${authors.slice(0, 3).join(", ")}, et al.` : authors.join(", ");
       return {
-        n: i + 1, file: f.file, title: m.title, authors, authorLine, year: m.year ?? "", venue: m.venue ?? "arXiv",
+        n: i + 1, file: f.file, title: m.title, authors, authorLine, year: m.year ?? "", venue: m.venue ?? "",
         url: m.url ?? "", family: m.family ?? "Uncategorized",
         stance: analyses[i].stance, subq: sub.question, query: sub.query,
         rank: `Ranked ${ordinal(f.rank + 1)} of ${f.of} papers for this search`,
         where: pageNums[i] ? `Page ${pageNums[i]}` : "Passage", page: pageNums[i],
         summary: analyses[i].summary, passage: clip(clean(first.chunk), 900),
         usedIn: sentenceFor(i + 1),
-        citations: buildCitations({ authors, year: m.year ?? "n.d.", title: m.title, arxivId: m.arxivId ?? "" }),
+        ...buildCitations({ authors, year: m.year, title: m.title, arxivId: m.arxivId ?? "", venue: m.venue }, citedFound.map(label), i), // citations, citationParts, inText
       };
     });
 
     const years = papers.map((p) => Number(p.year)).filter(Boolean);
     const result: AnswerResult = {
-      id: crypto.randomUUID(), question, collection, title, answer,
+      id: crypto.randomUUID(), question, collection, level, title, answer,
       stats: { papers: found.size, passages, cited: papers.length },
       papers, alts,
       yearRange: years.length ? (Math.min(...years) === Math.max(...years) ? String(years[0]) : `${Math.min(...years)}–${Math.max(...years)}`) : "",

@@ -2,19 +2,22 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import Citation from "./Citation";
 import CiteStyleToggle from "./CiteStyleToggle";
-import { Bookmark, Check, Copy, External, Minus } from "./Icons";
+import { Check, Copy, External, Minus, Star } from "./Icons";
+import { parseLevel } from "./LevelSlider";
 import Topbar from "./Topbar";
+import { buildSingleCitationCopy } from "@/lib/copyFormat";
 import { STANCE_LABEL, type AnswerResult } from "@/lib/format";
 import { useCiteStyle, useCopy, useTitle } from "@/lib/hooks";
 import { answerHref, sourceHref } from "@/lib/links";
-import { loadResult, loadSaved, toggleSaved } from "@/lib/store";
+import { loadFavorites, loadResult, recordPapers, toggleFavorite } from "@/lib/store";
 
 export default function SourceView() {
   const router = useRouter();
   const sp = useSearchParams();
   const q = sp.get("q") ?? "";
-  const scope = { deep: sp.get("deep") === "1", c: sp.get("c") ?? "all" };
+  const scope = { deep: sp.get("deep") === "1", c: sp.get("c") ?? "all", level: parseLevel(sp.get("l")) };
   const n = Number(sp.get("n") ?? 1);
 
   const [res, setRes] = useState<AnswerResult | null | undefined>(undefined);
@@ -23,16 +26,17 @@ export default function SourceView() {
   const [copied, copy] = useCopy();
 
   useEffect(() => {
-    setSaved(loadSaved());
+    setSaved(loadFavorites());
     const cached = loadResult();
-    const same = cached && cached.question === q && (cached.collection ?? "all") === scope.c && !!cached.deep === scope.deep;
+    const same = cached && cached.question === q && (cached.collection ?? "all") === scope.c && !!cached.deep === scope.deep && (cached.level ?? "Undergrad") === scope.level;
     if (same) setRes(cached);
     else { setRes(null); router.replace(q ? answerHref(q, scope) : "/"); } // answer isn't cached in this browser: re-run it
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, scope.c, scope.deep, router]);
+  }, [q, scope.c, scope.deep, scope.level, router]);
 
   const p = res?.papers.find((x) => x.n === n) ?? res?.papers[0];
   useTitle(p?.title ?? "");
+  useEffect(() => { if (p?.file) recordPapers([{ file: p.file, via: "viewed", question: q || undefined }]); }, [p?.file]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!res || !p) return null;
 
   const back = answerHref(q, scope);
@@ -67,7 +71,7 @@ export default function SourceView() {
               <div className="by">{[p.authorLine, p.venue].filter(Boolean).join(" · ")}</div>
               <div className="btn-row">
                 {p.url && <a className="btn dark" href={p.url} target="_blank" rel="noreferrer"><External size={14} />Open on arXiv</a>}
-                <button className="btn" aria-pressed={isSaved} onClick={() => setSaved(toggleSaved(p.file))}><Bookmark size={14} />{isSaved ? "Saved" : "Save paper"}</button>
+                <button className="btn" aria-pressed={isSaved} title={isSaved ? "Remove from favorites" : "Add to favorites"} onClick={() => setSaved(toggleFavorite(p.file))}><Star size={14} filled={isSaved} />{isSaved ? "Favorited" : "Add to favorites"}</button>
               </div>
             </section>
 
@@ -122,8 +126,8 @@ export default function SourceView() {
                     <CiteStyleToggle value={style} onChange={setStyle} />
                   </div>
                   <div className="cite-box">
-                    <div className="txt">{p.citations[style]}</div>
-                    <button title="Copy citation" aria-label="Copy citation" onClick={() => copy(p.citations[style])}>{copied ? <Check size={15} /> : <Copy size={15} />}</button>
+                    <div className="txt"><Citation paper={p} style={style} peers={res.papers} /></div>
+                    <button title="Copy citation" aria-label="Copy citation" onClick={() => copy(buildSingleCitationCopy(p, style, res.papers))}>{copied ? <Check size={15} /> : <Copy size={15} />}</button>
                   </div>
                 </section>
               </div>

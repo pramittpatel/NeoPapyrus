@@ -11,7 +11,7 @@ export async function GET() {
       const m = meta[r.FILE];
       return {
         file: r.FILE, title: m?.title ?? card.title ?? null, authors: m?.authors ?? [], year: m?.year ?? null,
-        family: m?.family ?? null, url: m?.url ?? null,
+        family: m?.family ?? null, source: m?.source ?? null, venue: m?.venue ?? null, url: m?.url ?? null,
         oneLine: card.one_line ?? null, method: card.method ?? null, keyFinding: card.key_finding ?? null, limitations: card.limitations ?? null,
       };
     });

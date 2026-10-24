@@ -28,5 +28,10 @@ export const Refresh = (p: P) => <Svg {...p}><path d="M20 11a8 8 0 1 0-2.3 5.7M2
 export const Close = (p: P) => <Svg {...p}><path d="M6 6l12 12M18 6L6 18" /></Svg>;
 export const External = (p: P) => <Svg {...p} sw={2}><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h10" /></Svg>;
 export const Bookmark = (p: P) => <Svg {...p} sw={2}><path d="M5 4h14v17l-7-4-7 4z" /></Svg>;
+export const Star = ({ size = 18, sw = 1.8, stroke = "currentColor", filled = false }: P & { filled?: boolean }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? stroke : "none"} stroke={stroke} strokeWidth={sw} strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.85L12 16.9l-5.25 2.75 1-5.85L3.5 9.7l5.9-.9z" />
+  </svg>
+);
 export const Check = (p: P) => <Svg {...p} sw={2.4}><path d="M5 12l5 5 9-10" /></Svg>;
 export const Minus = (p: P) => <Svg {...p} sw={2}><circle cx="12" cy="12" r="9" /><path d="M8 12h8" /></Svg>;

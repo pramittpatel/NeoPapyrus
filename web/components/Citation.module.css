@@ -1,0 +1,6 @@
+/* APA/MLA: hanging indent like the printed reference list. */
+.ref { display: block; padding-left: 1.5em; text-indent: -1.5em; }
+.ref em { font-style: italic; }
+
+/* BibTeX: monospace block that keeps the entry's line breaks and alignment. */
+.bib { display: block; font-family: var(--mono); font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; background: none; padding: 0; }

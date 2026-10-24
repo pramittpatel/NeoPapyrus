@@ -135,7 +135,7 @@ export function ProgressSteps({ steps, current, hint, hintAfter = 20, label = "P
                 <span className="sr-only">{state === "done" ? " (done)" : state === "current" ? " (in progress)" : " (waiting)"}</span>
               </span>
               {running !== null && <span className={styles.time} aria-hidden="true">{fmt(running)}</span>}
-              {took !== null && <span className={styles.time} aria-hidden="true">{fmt(took)}</span>}
+              {took !== null && <span className={styles.time} aria-hidden="true">{took ? fmt(took) : "<1s"}</span>}
             </li>
           );
         })}

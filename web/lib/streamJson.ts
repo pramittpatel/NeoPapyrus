@@ -34,7 +34,8 @@ export async function postWithProgress<T>(url: string, body: unknown, onStage: (
     try { e = JSON.parse(line) as ProgressEvent; } catch { return null; }
     if (e.type === "stage") { onStage({ id: e.id, label: e.label }); return null; }
     if (e.type === "error") throw new Error(e.error || GENERIC);
-    return { data: e.data as T };
+    if (e.type === "result") return { data: e.data as T };
+    return null; // keep-alive pings and anything newer
   };
 
   try {

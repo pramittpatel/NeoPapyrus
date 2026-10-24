@@ -6,30 +6,36 @@
  * returned unchanged. With it, the client gets a 200 newline-delimited JSON stream:
  *   {"type":"stage","id":"...","label":"..."}   one per step, as it starts
  *   {"type":"result","data":<the JSON the route would have returned>}   or   {"type":"error","error":"<message>"}
+ * plus {"type":"ping"} every 15s as a keep-alive: Cloudflare (the dev tunnel) drops streams that sit idle ~100s,
+ * and a single Snowflake step can take longer than that when the warehouse is busy. Clients ignore unknown types.
  */
 export type Stage = (id: string, label: string) => void;
 export type ProgressEvent =
   | { type: "stage"; id: string; label: string }
   | { type: "result"; data: unknown }
-  | { type: "error"; error: string };
+  | { type: "error"; error: string }
+  | { type: "ping" };
 
 export const NDJSON = "application/x-ndjson";
 
 export const wantsProgress = (req: Request) => (req.headers.get("accept") ?? "").includes(NDJSON);
 
 const FALLBACK_ERROR = "The request to Snowflake failed. Try again in a moment.";
+const KEEPALIVE_MS = 15_000;
 
 export async function withProgress(req: Request, run: (stage: Stage) => Promise<Response>): Promise<Response> {
   if (!wantsProgress(req)) return run(() => {});
 
   const enc = new TextEncoder();
   let open = true;
+  let keepalive: ReturnType<typeof setInterval> | undefined;
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (e: ProgressEvent) => {
         if (!open) return;
         try { controller.enqueue(enc.encode(JSON.stringify(e) + "\n")); } catch { open = false; } // client went away
       };
+      keepalive = setInterval(() => send({ type: "ping" }), KEEPALIVE_MS);
       try {
         const res = await run((id, label) => send({ type: "stage", id, label }));
         const data = await res.json().catch(() => null);
@@ -39,9 +45,10 @@ export async function withProgress(req: Request, run: (stage: Stage) => Promise<
         console.error(e);
         send({ type: "error", error: FALLBACK_ERROR });
       }
+      clearInterval(keepalive);
       if (open) { open = false; try { controller.close(); } catch {} }
     },
-    cancel() { open = false; },
+    cancel() { open = false; clearInterval(keepalive); },
   });
 
   return new Response(stream, {

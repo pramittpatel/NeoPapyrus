@@ -50,3 +50,11 @@ FROM papers_raw WHERE text IS NOT NULL;
 -- BLOCK 7: question log
 CREATE TABLE IF NOT EXISTS question_log (
   ts TIMESTAMP_LTZ DEFAULT CURRENT_TIMESTAMP(), tab STRING, question STRING, model STRING, papers ARRAY);
+
+-- BLOCK 8: citation metadata (title, authors, topic label) for the web app's evidence matrix and citations
+CREATE OR REPLACE TABLE paper_meta AS
+SELECT file,
+       TRY_PARSE_JSON(REGEXP_REPLACE(TO_VARCHAR(AI_COMPLETE('llama3.3-70b',
+         'Return ONLY JSON, no markdown fences, with keys: title (string), authors (array of full names exactly as printed on the paper, max 12), family (a 2-3 word topic label such as "Clinical LLMs" or "Medical image segmentation").\n\n' || LEFT(text, 6000))),
+         '```(json)?', '')) AS meta
+FROM papers_raw WHERE text IS NOT NULL;

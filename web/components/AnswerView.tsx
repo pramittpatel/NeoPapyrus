@@ -1,0 +1,206 @@
+"use client";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState, type FormEvent } from "react";
+import CiteStyleToggle from "./CiteStyleToggle";
+import Combobox from "./Combobox";
+import ErrorNote from "./ErrorNote";
+import { Check, ChevronRight, Close, Copy, Download, Folder, Graph, Refresh, Send, SidebarRight, Spark, Table } from "./Icons";
+import Rich from "./Rich";
+import Topbar from "./Topbar";
+import { csvCell, download } from "@/lib/download";
+import { STANCE_LABEL, type AnswerResult } from "@/lib/format";
+import { useCiteStyle, useCopy, useFlash, useTitle } from "@/lib/hooks";
+import { answerHref, sourceHref } from "@/lib/links";
+import { loadResult, saveResult } from "@/lib/store";
+import { useCollections } from "@/lib/useCollections";
+
+export default function AnswerView() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const q = params.get("q") ?? "";
+  const deep = params.get("deep") === "1";
+  const collection = params.get("c") ?? "all";
+  const collections = useCollections();
+  const [style, setStyle] = useCiteStyle();
+  const [copied, copy] = useCopy();
+  const [flash, goToSource] = useFlash("source");
+
+  const [res, setRes] = useState<AnswerResult | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
+  const [panel, setPanel] = useState(true);
+  const [artifact, setArtifact] = useState<"matrix" | "map">("matrix");
+  const [follow, setFollow] = useState("");
+
+  useTitle(res?.title ?? q);
+
+  useEffect(() => {
+    if (!q) { router.replace("/"); return; }
+    const cached = loadResult();
+    if (nonce === 0 && cached && cached.question === q && (cached.collection ?? "all") === collection && !!cached.deep === deep) {
+      setRes(cached); setErr(null); return;
+    }
+    const ctl = new AbortController();
+    setRes(null); setErr(null);
+    fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q, deep, collection }), signal: ctl.signal })
+      .then(async (r) => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error ?? "Something went wrong.");
+        saveResult(d, deep); setRes(d);
+      })
+      .catch((e: Error) => { if (e.name !== "AbortError") setErr(e.message); });
+    return () => ctl.abort();
+  }, [q, deep, collection, nonce, router]);
+
+  const scope = { deep, c: collection };
+  const ask = (e: FormEvent) => {
+    e.preventDefault();
+    const t = follow.trim();
+    if (t) { setFollow(""); router.push(answerHref(t, scope)); }
+  };
+  const exportCitations = () => res && download(`citations-${style.toLowerCase()}.${style === "BibTeX" ? "bib" : "txt"}`, res.papers.map((p) => p.citations[style]).join("\n\n"));
+  const exportCsv = () => {
+    if (!res) return;
+    const head = ["#", "Title", "Authors", "Year", "Venue", "Topic", "Stance", "URL"];
+    const rows = res.papers.map((p) => [p.n, p.title, p.authors.join("; "), p.year, p.venue, p.family, STANCE_LABEL[p.stance], p.url].map((c) => csvCell(String(c))).join(","));
+    download("evidence-matrix.csv", [head.map(csvCell).join(","), ...rows].join("\n"), "text/csv");
+  };
+
+  const hasPapers = !!res && res.papers.length > 0;
+  const families = res ? [...new Set(res.papers.map((p) => p.family))] : [];
+
+  return (
+    <>
+      <Topbar back="history" title={q}>
+        <Combobox label="Collection" prefix="Collection:" icon={<Folder size={14} />} align="end" options={collections}
+          value={collection} onChange={(c) => router.push(answerHref(q, { deep, c }))} searchPlaceholder="Search collections…" />
+        {hasPapers && <button className="icon-btn" aria-label="Toggle artifact panel" aria-pressed={panel} onClick={() => setPanel((p) => !p)}><SidebarRight /></button>}
+      </Topbar>
+
+      <div className="answer-wrap">
+        <main className="answer-main">
+          <div className="col">
+            <div className="bubble-row"><div className="bubble">{q}</div></div>
+
+            {err && <ErrorNote message={err} onRetry={() => setNonce((n) => n + 1)} />}
+
+            {!res && !err && (
+              <div className="article" aria-live="polite" aria-busy="true">
+                <div className="status"><Spark size={14} stroke="#D97757" />Splitting your question, searching the papers and checking passages…</div>
+                <div className="skeleton"><i style={{ width: "38%", height: 20 }} /><i /><i style={{ width: "92%" }} /><i style={{ width: "86%" }} /><i style={{ width: "60%" }} /></div>
+              </div>
+            )}
+
+            {res && (
+              <>
+                <article className="article">
+                  <div className="status">
+                    <Spark size={14} stroke="#D97757" />
+                    Searched {res.stats.papers} {res.stats.papers === 1 ? "paper" : "papers"} · read {res.stats.passages} passages · cited {res.stats.cited}
+                  </div>
+                  <h1>{res.title}</h1>
+                  <Rich text={res.answer} onCite={goToSource} />
+                </article>
+
+                {hasPapers && (
+                  <>
+                    <div className="artifacts">
+                      <button className="artifact" aria-pressed={panel && artifact === "matrix"} onClick={() => { setArtifact("matrix"); setPanel(true); }}>
+                        <span className="ic"><Table /></span>
+                        <span><b>Evidence matrix</b><small>Table · {res.papers.length} papers{panel && artifact === "matrix" ? " · open" : ""}</small></span>
+                      </button>
+                      <button className="artifact" aria-pressed={panel && artifact === "map"} onClick={() => { setArtifact("map"); setPanel(true); }}>
+                        <span className="ic"><Graph /></span>
+                        <span><b>Topic map</b><small>Diagram · {families.length} {families.length === 1 ? "topic" : "topics"}{panel && artifact === "map" ? " · open" : ""}</small></span>
+                      </button>
+                    </div>
+
+                    <section aria-label="Sources" className="sources">
+                      <div className="sources-head">
+                        <h2 className="eyebrow">Sources</h2>
+                        <CiteStyleToggle value={style} onChange={setStyle} />
+                      </div>
+                      <ol>
+                        {res.papers.map((p) => (
+                          <li key={p.file} id={`source-${p.n}`} className={flash === p.n ? "flash" : undefined}>
+                            <span className="cite block">{p.n}</span>
+                            <span className={`c${style === "BibTeX" ? " mono" : ""}`}>{p.citations[style]}</span>
+                            <Link className="why" href={sourceHref(p.n, q, scope)}>Why this?</Link>
+                          </li>
+                        ))}
+                      </ol>
+                    </section>
+                  </>
+                )}
+
+                <div className="actions">
+                  <button className="icon-btn sm" title="Copy answer" aria-label="Copy answer" onClick={() => copy(`${res.title}\n\n${res.answer.replace(/\*\*/g, "")}`)}>
+                    {copied ? <Check size={16} /> : <Copy size={16} />}
+                  </button>
+                  {hasPapers && <button className="icon-btn sm" title={`Download citations (${style})`} aria-label="Download citations" onClick={exportCitations}><Download size={16} /></button>}
+                  <button className="icon-btn sm" title="Regenerate answer" aria-label="Regenerate answer" onClick={() => setNonce((n) => n + 1)}><Refresh size={16} /></button>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="follow">
+            <form className="composer row" onSubmit={ask}>
+              <label htmlFor="followup" className="sr-only">Ask another question</label>
+              <input id="followup" value={follow} onChange={(e) => setFollow(e.target.value)} maxLength={500} placeholder="Ask another question…" />
+              <button type="submit" className="send" aria-label="Send" disabled={!follow.trim()}><Send size={16} /></button>
+            </form>
+            <div className="meta-row">
+              <span>Preprints from arXiv</span>
+              {res?.yearRange && <span>{res.yearRange}</span>}
+            </div>
+          </div>
+        </main>
+
+        {hasPapers && panel && (
+          <aside className="panel" aria-label="Artifact panel">
+            <div className="panel-head">
+              <div>
+                <b>{artifact === "matrix" ? "Evidence matrix" : "Topic map"}</b>
+                <small>Artifact · generated from {res.papers.length} sources</small>
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                {artifact === "matrix" && <button className="icon-btn sm" title="Download as CSV" aria-label="Download as CSV" onClick={exportCsv}><Download size={16} /></button>}
+                <button className="icon-btn sm" aria-label="Close panel" onClick={() => setPanel(false)}><Close size={16} /></button>
+              </div>
+            </div>
+            <div className="panel-note">
+              {artifact === "matrix" ? "Click any row to see why the assistant picked that paper and which passage it used." : "Cited papers grouped by topic. Click a paper to see why it was chosen."}
+            </div>
+            {artifact === "matrix" ? (
+              <div className="rows">
+                {res.papers.map((p) => (
+                  <Link key={p.file} href={sourceHref(p.n, q, scope)} className={`row-card${flash === p.n ? " flash" : ""}`}>
+                    <div className="row-top">
+                      <span className="cite block">{p.n}</span>
+                      <div className="t"><b>{p.title}</b><small>{[p.authorLine, p.venue].filter(Boolean).join(" · ")}</small></div>
+                      <ChevronRight size={16} stroke="#62626B" />
+                    </div>
+                    <div className="row-tags"><span className="tag">{p.family}</span><span className={`tag ${p.stance}`}>{STANCE_LABEL[p.stance]}</span></div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="map">
+                {families.map((f) => (
+                  <div key={f} className="map-group">
+                    <h3>{f}</h3>
+                    {res.papers.filter((p) => p.family === f).map((p) => (
+                      <Link key={p.file} href={sourceHref(p.n, q, scope)}><span className="cite block">{p.n}</span>{p.title}</Link>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </aside>
+        )}
+      </div>
+    </>
+  );
+}

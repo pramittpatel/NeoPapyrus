@@ -50,6 +50,18 @@ Laptop -> papercourt_cli.py -> vector search (connector) + Cortex REST API -> an
 
 > Never commit passwords or tokens. Keep them in environment variables.
 
+## Web app (Next.js)
+
+`web/` is the main site. Server-side API routes (`web/app/api/*`) talk to Snowflake through the Node SDK, so credentials never reach the browser.
+
+```
+cd web && npm install
+cp ../.env .env.local        # SNOWFLAKE_ACCOUNT / USER / PASSWORD / ROLE / WAREHOUSE, optional CORTEX_MODEL
+npm run dev                  # http://localhost:3000
+```
+
+Pages: Ask (cited answer, clickable `[n]` citations that open the source passage, verdict badges, level selector), Debate, Gaps, Library. `streamlit_app.py` remains as a fallback.
+
 ## Why a web app
 
 The project is built on Snowflake, and the work happens on laptops, so a Streamlit web app running inside Snowflake is the best fit. The REST API means a mobile app could use the same backend later.

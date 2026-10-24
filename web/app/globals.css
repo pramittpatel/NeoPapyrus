@@ -292,3 +292,5 @@ a.cite:hover { background: var(--accent); color: #fff; }
 .sources h2.eyebrow { margin: 0; }
 @media (max-width: 860px) { .toolbar > :nth-child(2) { width: 100%; } }
 .sources li.flash .cite, .row-card.flash .cite { background: var(--surface); }
+.pick-note { display: flex; align-items: flex-start; gap: 6px; margin: -4px 0 4px; font-size: 12.5px; line-height: 1.45; color: var(--accent-ink); }
+.pick-note svg { flex: none; margin-top: 3px; }

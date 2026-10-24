@@ -18,6 +18,19 @@ export function saveLevel(v: ExplainLevel) {
   try { localStorage.setItem(KEY, v); } catch { /* storage unavailable */ }
 }
 
+const LABEL: Record<ExplainLevel, string> = { "High-schooler": "High school", Undergrad: "Undergrad", PhD: "PhD" };
+const NOTE: Record<ExplainLevel, string> = {
+  "High-schooler": "Plain words, every technical term explained.",
+  Undergrad: "Standard terms; specialised ones explained.",
+  PhD: "Technical detail: methods, metrics and limits.",
+};
+
+const Cap = ({ size = 15 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M2 9l10-5 10 5-10 5z" /><path d="M6 11.5V16c0 1.4 2.7 3 6 3s6-1.6 6-3v-4.5" /><path d="M22 9v5" />
+  </svg>
+);
+
 type Props = { value: ExplainLevel; onChange: (v: ExplainLevel) => void; compact?: boolean };
 
 /** Three-stop slider: click a stop, drag the thumb (snaps), or use the arrow keys. */
@@ -82,9 +95,12 @@ export default function LevelSlider({ value, onChange, compact }: Props) {
 
   return (
     <div className={`${styles.root}${compact ? ` ${styles.compact}` : ""}`}>
-      <div className={styles.text} aria-hidden="true">
-        <b className={styles.value}>{shown}</b>
-        <span className={styles.caption}>Explanation level</span>
+      <div className={styles.head} aria-hidden="true">
+        <div className={styles.text}>
+          <b className={styles.value}>{LABEL[shown as ExplainLevel] ?? shown}</b>
+          <span className={styles.caption}>Explanation level</span>
+        </div>
+        <span className={styles.headIcon}><Cap size={16} /></span>
       </div>
       <div
         ref={trackRef}
@@ -111,6 +127,12 @@ export default function LevelSlider({ value, onChange, compact }: Props) {
         ))}
         <span className={styles.thumb} aria-hidden="true" />
       </div>
+      <div className={styles.stops} aria-hidden="true">
+        {EXPLAIN_LEVELS.map((l, i) => (
+          <button key={l} type="button" tabIndex={-1} className={i === idx ? styles.stopOn : undefined} onClick={() => commit(i)}>{LABEL[l]}</button>
+        ))}
+      </div>
+      <p className={styles.note}>{NOTE[shown as ExplainLevel] ?? ""}</p>
     </div>
   );
 }
@@ -160,17 +182,13 @@ export function LevelBadge({ value, onChange, align = "end", side = "above" }: B
         className={styles.badge}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={`Explanation level: ${value}`}
+        aria-label={`Explanation level: ${LABEL[value]}`}
+        title="Explanation level"
         onClick={() => (open ? close(false) : openPop())}
         onKeyDown={(e) => { if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); openPop(); } }}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-          <path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" />
-        </svg>
-        <span className={styles.badgeText}><span className={styles.badgeValue}>{value}</span><span className={styles.badgeHint}> level</span></span>
-        <svg className={styles.chevron} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="m6 9 6 6 6-6" />
-        </svg>
+        <span className={styles.badgeIcon}><Cap size={14} /></span>
+        <span className={styles.badgeText}>{LABEL[value]}</span>
       </button>
       {open && (
         <div ref={popRef} role="dialog" aria-label="Explanation level" onKeyDown={onPopKey}

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import ErrorNote from "@/components/ErrorNote";
 import { External, Star } from "@/components/Icons";
+import { FadeIn, Skeleton, SkeletonCard } from "@/components/Loading";
 import Topbar from "@/components/Topbar";
 import { clearRecentPapers, librarySnapshot, loadFavorites, loadRecentPapers, subscribeLibrary, toggleFavorite, type RecentPaper } from "@/lib/store";
 import styles from "./library.module.css";
@@ -93,7 +94,22 @@ export default function Library() {
         </div>
 
         {err && <ErrorNote message={err} onRetry={retry} />}
-        {loading && <div className="skeleton" aria-busy="true"><i style={{ height: 120 }} /><i style={{ height: 120 }} /></div>}
+        {loading && (
+          <>
+            <Skeleton width={150} height={13} />
+            <div className="cards" aria-busy="true" aria-label="Library, loading">
+              {Array.from({ length: Math.min(6, Math.max(total, 1)) }, (_, i) => (
+                <SkeletonCard key={i} className="lib-card" chip={false} title={["88%", "74%", "92%", "68%", "80%", "86%"][i]} meta="58%" lines={2}>
+                  <div className="lib-top" style={{ order: -1 }}><Skeleton width={84} height={20} radius={6} /><Skeleton width={20} height={20} radius={6} /></div>
+                  <div style={{ display: "grid", gridTemplateColumns: "56px 1fr", gap: "8px 10px", marginTop: 2 }}>
+                    {[0, 1].map((r) => [<Skeleton key={`k${r}`} width={40} height={10} />, <Skeleton key={`v${r}`} width={r ? "70%" : "88%"} height={12} />])}
+                  </div>
+                  <div className="btn-row"><Skeleton width={104} height={36} radius={10} /><Skeleton width={128} height={36} radius={10} /></div>
+                </SkeletonCard>
+              ))}
+            </div>
+          </>
+        )}
 
         {recent && !loading && !err && total === 0 && (
           <div className={styles.empty}>
@@ -112,7 +128,7 @@ export default function Library() {
           : <p className="count">{total} {total === 1 ? "paper" : "papers"}{view === "recent" ? ", most recent first" : ", A to Z"}</p>)}
         {papers && total > 0 && shown.length === 0 && <p className="muted">No papers match &ldquo;{text.trim()}&rdquo;.</p>}
 
-        <div className="cards">
+        <FadeIn key={papers ? "ready" : "wait"} className="cards">
           {shown.map(({ paper: p, seen }) => {
             const fav = favs.includes(p.file);
             return (
@@ -145,7 +161,7 @@ export default function Library() {
               </article>
             );
           })}
-        </div>
+        </FadeIn>
       </main>
     </>
   );

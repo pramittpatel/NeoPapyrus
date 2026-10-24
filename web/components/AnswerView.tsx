@@ -8,6 +8,7 @@ import CiteStyleToggle from "./CiteStyleToggle";
 import Combobox from "./Combobox";
 import ErrorNote from "./ErrorNote";
 import { LevelBadge, parseLevel, saveLevel } from "./LevelSlider";
+import { BUSY_HINT, FadeIn, ProgressSteps, Skeleton, SkeletonRow, SkeletonText, Spinner, StatusLine, mergeSteps, type Step } from "./Loading";
 import { Book, Check, ChevronRight, Close, Copy, Download, Folder, Graph, Refresh, Send, SidebarRight, Table } from "./Icons";
 import Rich from "./Rich";
 import Topbar from "./Topbar";
@@ -17,7 +18,16 @@ import { STANCE_LABEL, type AnswerResult } from "@/lib/format";
 import { useCiteStyle, useCopy, useFlash, useTitle } from "@/lib/hooks";
 import { answerHref, sourceHref } from "@/lib/links";
 import { loadResult, saveResult } from "@/lib/store";
-import { useCollections } from "@/lib/useCollections";
+import { postWithProgress } from "@/lib/streamJson";
+import { useCollectionOptions } from "@/lib/useCollections";
+
+// The steps /api/ask reports, in order; the server's labels (e.g. the number of searches) replace these as they arrive.
+const ASK_STEPS: Step[] = [
+  { id: "decompose", label: "Splitting your question" },
+  { id: "retrieve", label: "Searching the papers" },
+  { id: "write", label: "Writing the answer" },
+  { id: "check", label: "Checking each cited source" },
+];
 
 export default function AnswerView() {
   const router = useRouter();
@@ -26,7 +36,7 @@ export default function AnswerView() {
   const deep = params.get("deep") === "1";
   const collection = params.get("c") ?? "all";
   const level = parseLevel(params.get("l"));
-  const collections = useCollections();
+  const { options: collections, loading: collectionsLoading } = useCollectionOptions();
   const [style, setStyle] = useCiteStyle();
   const [copied, copy] = useCopy();
   const [copiedRefs, copyRefs] = useCopy();
@@ -34,6 +44,7 @@ export default function AnswerView() {
 
   const [res, setRes] = useState<AnswerResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [stages, setStages] = useState<Step[]>([]);
   const [nonce, setNonce] = useState(0);
   const [panel, setPanel] = useState(true);
   const [artifact, setArtifact] = useState<"matrix" | "map">("matrix");
@@ -48,13 +59,9 @@ export default function AnswerView() {
       setRes(cached); setErr(null); return;
     }
     const ctl = new AbortController();
-    setRes(null); setErr(null);
-    fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q, deep, collection, level }), signal: ctl.signal })
-      .then(async (r) => {
-        const d = await r.json();
-        if (!r.ok) throw new Error(d.error ?? "Something went wrong.");
-        saveResult(d, deep); setRes(d);
-      })
+    setRes(null); setErr(null); setStages([]);
+    postWithProgress<AnswerResult>("/api/ask", { question: q, deep, collection, level }, (s) => setStages((prev) => [...prev.filter((x) => x.id !== s.id), s]), ctl.signal)
+      .then((d) => { saveResult(d, deep); setRes(d); })
       .catch((e: Error) => { if (e.name !== "AbortError") setErr(e.message); });
     return () => ctl.abort();
   }, [q, deep, collection, level, nonce, router]);
@@ -78,15 +85,17 @@ export default function AnswerView() {
     download("evidence-matrix.csv", [head.map(csvCell).join(","), ...rows].join("\n"), "text/csv");
   };
 
+  const loading = !res && !err;
   const hasPapers = !!res && res.papers.length > 0;
+  const runKey = `${q}|${deep}|${collection}|${level}|${nonce}`;
   const families = res ? [...new Set(res.papers.map((p) => p.family))] : [];
 
   return (
     <>
       <Topbar back="history" title={q}>
         <Combobox label="Collection" prefix="Collection:" icon={<Folder size={14} />} align="end" options={collections}
-          value={collection} onChange={(c) => router.push(answerHref(q, { ...scope, c }))} searchPlaceholder="Search collections…" />
-        {hasPapers && <button className="icon-btn" aria-label="Toggle artifact panel" aria-pressed={panel} onClick={() => setPanel((p) => !p)}><SidebarRight /></button>}
+          value={collection} onChange={(c) => router.push(answerHref(q, { ...scope, c }))} searchPlaceholder="Search collections…" loading={collectionsLoading} />
+        {(hasPapers || loading) && <button className="icon-btn" aria-label="Toggle artifact panel" aria-pressed={panel} onClick={() => setPanel((p) => !p)}><SidebarRight /></button>}
       </Topbar>
 
       <div className="answer-wrap">
@@ -94,20 +103,36 @@ export default function AnswerView() {
           <div className="col">
             {err && <ErrorNote message={err} onRetry={() => setNonce((n) => n + 1)} />}
 
-            {!res && !err && (
-              <div className="article" aria-live="polite" aria-busy="true">
-                <div className="status"><span className="spinner" aria-hidden="true" />Splitting your question, searching the papers and checking passages…</div>
-                <div className="skeleton"><i style={{ width: "38%", height: 20 }} /><i /><i style={{ width: "92%" }} /><i style={{ width: "86%" }} /><i style={{ width: "60%" }} /></div>
+            {loading && (
+              <div className="answer-loading">
+                <div className="article">
+                  <ProgressSteps key={runKey} label="Answer progress" steps={mergeSteps(ASK_STEPS, stages)} current={stages.at(-1)?.id ?? null} hint={BUSY_HINT} />
+                  <div className="article" aria-busy="true" aria-label="Answer, loading" style={{ marginTop: 6 }}>
+                    <Skeleton width="46%" height={22} />
+                    <SkeletonText lines={5} gap={11} />
+                  </div>
+                </div>
+                <div className="artifacts" aria-hidden="true">
+                  {[0, 1].map((i) => (
+                    <div key={i} className="artifact sk-artifact">
+                      <Skeleton width={40} height={40} radius={10} />
+                      <span style={{ flex: 1, display: "flex", flexDirection: "column", gap: 7 }}><Skeleton width="52%" height={13} /><Skeleton width="38%" height={11} /></span>
+                    </div>
+                  ))}
+                </div>
+                <div className="sources" aria-hidden="true">
+                  <div className="sources-head"><Skeleton width={64} height={12} /><Skeleton width={150} height={28} radius={8} /></div>
+                  <ol>{[0, 1, 2].map((i) => <li key={i}><SkeletonRow title={["86%", "78%", "82%"][i]} sub={["58%", "64%", "46%"][i]} style={{ flex: 1 }} /></li>)}</ol>
+                </div>
               </div>
             )}
 
             {res && (
-              <>
+              <FadeIn key={res.id} stack={24}>
                 <article className="article">
-                  <div className="status">
-                    <span className="done"><Check size={14} /></span>
+                  <StatusLine done>
                     Searched {res.stats.papers} {res.stats.papers === 1 ? "paper" : "papers"} · read {res.stats.passages} passages · cited {res.stats.cited}
-                  </div>
+                  </StatusLine>
                   <h1>{res.title}</h1>
                   <Rich text={res.answer} onCite={goToSource} />
                 </article>
@@ -155,7 +180,7 @@ export default function AnswerView() {
                   {hasPapers && <button className="icon-btn sm" title={style === "BibTeX" ? "Download citations (.bib)" : `Download reference list (${style}, .rtf for Word/Docs)`} aria-label="Download citations" onClick={exportCitations}><Download size={16} /></button>}
                   <button className="icon-btn sm" title="Regenerate answer" aria-label="Regenerate answer" onClick={() => setNonce((n) => n + 1)}><Refresh size={16} /></button>
                 </div>
-              </>
+              </FadeIn>
             )}
           </div>
 
@@ -164,7 +189,9 @@ export default function AnswerView() {
               <label htmlFor="followup" className="sr-only">Ask another question</label>
               <AutoGrowTextarea id="followup" value={follow} onChange={(e) => setFollow(e.target.value)} onEnter={sendFollow} maxLength={500} placeholder="Ask another question…" />
               <LevelBadge value={level} onChange={changeLevel} />
-              <button type="submit" className="send" aria-label="Send" disabled={!follow.trim()}><Send size={16} /></button>
+              <button type="submit" className="send" aria-label={loading ? "Answering…" : "Send"} aria-busy={loading} disabled={loading || !follow.trim()}>
+                {loading ? <Spinner size={16} /> : <Send size={16} />}
+              </button>
             </form>
             <div className="meta-row">
               <span>Preprints from arXiv</span>
@@ -172,6 +199,27 @@ export default function AnswerView() {
             </div>
           </div>
         </main>
+
+        {loading && panel && (
+          <aside className="panel" aria-label="Artifact panel" aria-busy="true">
+            <div className="panel-head">
+              <div>
+                <b>Evidence matrix</b>
+                <small>Artifact · waiting for sources</small>
+              </div>
+              <button className="icon-btn sm" aria-label="Close panel" onClick={() => setPanel(false)}><Close size={16} /></button>
+            </div>
+            <div className="panel-note">Each cited paper will appear here with its topic and how strongly it supports the answer.</div>
+            <div className="rows" aria-hidden="true">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="row-card">
+                  <SkeletonRow title={["84%", "70%", "90%", "76%"][i]} sub={["56%", "48%", "62%", "40%"][i]} />
+                  <div className="row-tags"><Skeleton width={96} height={20} radius={6} /><Skeleton width={64} height={20} radius={6} /></div>
+                </div>
+              ))}
+            </div>
+          </aside>
+        )}
 
         {hasPapers && panel && (
           <aside className="panel" aria-label="Artifact panel">

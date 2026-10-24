@@ -1,3 +1,4 @@
+import { withProgress, type Stage } from "@/lib/progress";
 import { complete, completeJson, contextBlock, fail, logQuestion, paperMeta, readQuestion, retrieve, serverError, type Hit } from "@/lib/rag";
 
 const RULES =
@@ -36,7 +37,9 @@ const argue = (side: "A" | "B", paper: Paper, hits: Hit[], question: string, opp
  * Body: { question, a, b } where a/b are a paper file or "auto".
  * Auto A = the paper that best answers the question; auto B = the paper whose evidence most challenges A's argument.
  */
-export async function POST(req: Request) {
+export const POST = (req: Request) => withProgress(req, (stage) => debate(req, stage));
+
+async function debate(req: Request, stage: Stage) {
   const body = await req.json().catch(() => ({}));
   const question = readQuestion(body.question);
   const a = typeof body.a === "string" ? body.a : AUTO;
@@ -51,6 +54,7 @@ export async function POST(req: Request) {
 
     let fileA = a;
     let whyA = "";
+    stage("read-a", a === AUTO ? "Finding the best paper for the question" : "Reading Paper A");
     if (a === AUTO) {
       const best = byPaper(await retrieve(question, 12), b === AUTO ? [] : [b])[0];
       if (!best) return fail("No paper in the library addresses this question. Try rephrasing it.");
@@ -58,10 +62,12 @@ export async function POST(req: Request) {
       whyA = "Best match for the question.";
     }
     const ha = await retrieve(question, 4, fileA);
+    stage("argue-a", "Paper A is arguing");
     const argA = await argue("A", paperOf(fileA), ha, question);
 
     let fileB = b;
     let whyB = "";
+    stage("read-b", b === AUTO ? "Finding the strongest counterpoint" : "Reading Paper B");
     if (b === AUTO) {
       const pool = byPaper(await retrieve(question, 25), [fileA]).slice(0, 5);
       if (!pool.length) return fail("No other paper addresses this question, so there is nothing to debate. Pick Paper B manually.");
@@ -77,8 +83,10 @@ export async function POST(req: Request) {
       whyB = typeof pick?.reason === "string" && pick.reason ? pick.reason : "Strongest available counterpoint to Paper A.";
     }
     const hb = await retrieve(question, 4, fileB);
+    stage("argue-b", "Paper B is responding");
     const argB = await argue("B", paperOf(fileB), hb, question, { paper: paperOf(fileA), arg: argA });
 
+    stage("judge", "Judging, finding gaps and research topics");
     const excerpts = (hs: Hit[]) => hs.map((h) => h.chunk.slice(0, 700)).join("\n---\n");
     const raw = await completeJson<Partial<Ruling>>(
       "You are the judge of a debate between two research papers. Use ONLY the arguments and excerpts below; do not add facts. " +

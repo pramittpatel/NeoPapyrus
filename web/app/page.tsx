@@ -6,12 +6,13 @@ import AutoGrowTextarea from "@/components/AutoGrowTextarea";
 import Combobox from "@/components/Combobox";
 import { DEFAULT_LEVEL, LevelBadge, loadLevel, saveLevel } from "@/components/LevelSlider";
 import { Book, Folder, Lines, Search, Send } from "@/components/Icons";
+import { Spinner } from "@/components/Loading";
 import Topbar from "@/components/Topbar";
 import { CITE_STYLES, type CiteStyle, type ExplainLevel } from "@/lib/format";
 import { useCiteStyle } from "@/lib/hooks";
 import { answerHref } from "@/lib/links";
 import { loadRecent, type Recent } from "@/lib/store";
-import { useCollectionData, useCollections } from "@/lib/useCollections";
+import { useCollectionData, useCollectionOptions } from "@/lib/useCollections";
 
 const EXAMPLES = [
   "Can large language models be used for clinical prediction?",
@@ -22,7 +23,7 @@ const STYLE_OPTIONS = CITE_STYLES.map((s) => ({ value: s, label: s }));
 
 export default function Home() {
   const router = useRouter();
-  const collections = useCollections();
+  const { options: collections, loading: collectionsLoading } = useCollectionOptions();
   const collectionData = useCollectionData();
   const picked = useRef(false);
   const [q, setQ] = useState("");
@@ -31,8 +32,10 @@ export default function Home() {
   const [style, setStyle] = useCiteStyle();
   const [level, setLevel] = useState<ExplainLevel>(DEFAULT_LEVEL);
   const [recent, setRecent] = useState<Recent | null>(null);
+  const [going, setGoing] = useState(false); // navigating to the answer page
 
-  useEffect(() => { setRecent(loadRecent()[0] ?? null); setLevel(loadLevel()); }, []);
+  // Also runs when the page is shown again (back navigation keeps this page's state), so the send button resets.
+  useEffect(() => { setRecent(loadRecent()[0] ?? null); setLevel(loadLevel()); setGoing(false); }, []);
   // The team's own papers are the base corpus: preselect them unless the user already chose something else.
   useEffect(() => {
     if (!picked.current && collectionData?.collections.some((c) => c.value === "src:team")) setCollection("src:team");
@@ -40,7 +43,8 @@ export default function Home() {
 
   const go = (question: string) => {
     const t = question.trim();
-    if (!t) return;
+    if (!t || going) return;
+    setGoing(true);
     router.push(answerHref(t, { deep, c: collection, level }));
   };
   const submit = (e: FormEvent) => { e.preventDefault(); go(q); };
@@ -57,7 +61,7 @@ export default function Home() {
 
           <div className="options">
             <Combobox label="Collection" prefix="Collection:" icon={<Folder size={14} />} align="end"
-              options={collections} value={collection} onChange={(c) => { picked.current = true; setCollection(c); }} searchPlaceholder="Search collections…" />
+              options={collections} value={collection} onChange={(c) => { picked.current = true; setCollection(c); }} searchPlaceholder="Search collections…" loading={collectionsLoading} />
             <Combobox label="Citation style" prefix="Cite:" icon={<Lines size={14} />} align="end"
               options={STYLE_OPTIONS} value={style} onChange={(v) => setStyle(v as CiteStyle)} />
           </div>
@@ -73,7 +77,9 @@ export default function Home() {
               </button>
               <div className="grow" />
               <LevelBadge value={level} onChange={(v) => { setLevel(v); saveLevel(v); }} />
-              <button type="submit" className="send" aria-label="Send" disabled={!q.trim()}><Send size={16} /></button>
+              <button type="submit" className="send" aria-label={going ? "Opening answer…" : "Send"} aria-busy={going} disabled={going || !q.trim()}>
+                {going ? <Spinner size={16} /> : <Send size={16} />}
+              </button>
             </div>
           </form>
 

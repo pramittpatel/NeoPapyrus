@@ -15,11 +15,19 @@ export function useCollectionData(): Data | null {
   return data;
 }
 
-export function useCollections(): ComboOption[] {
+/** Collection options plus whether they are still loading (for a spinner in the picker). */
+export function useCollectionOptions(): { options: ComboOption[]; loading: boolean } {
   const data = useCollectionData();
   const plural = (n: number) => `${n} ${n === 1 ? "paper" : "papers"}`;
-  return [
-    { value: "all", label: "All sources", hint: data ? plural(data.total) : undefined },
-    ...(data?.collections ?? []).map((c) => ({ value: c.value, label: c.name, hint: plural(c.count) })),
-  ];
+  return {
+    loading: data === null,
+    options: [
+      { value: "all", label: "All sources", hint: data ? plural(data.total) : undefined },
+      ...(data?.collections ?? []).map((c) => ({ value: c.value, label: c.name, hint: plural(c.count) })),
+    ],
+  };
+}
+
+export function useCollections(): ComboOption[] {
+  return useCollectionOptions().options;
 }

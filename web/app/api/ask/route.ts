@@ -4,6 +4,7 @@ import { ordinal, splitFile, type AnswerResult, type PaperResult, type Stance } 
 import {
   complete, completeJson, fail, logQuestion, paperMeta, readQuestion, retrieve, scopeFor, serverError, type Hit, type Meta,
 } from "@/lib/rag";
+import { withProgress, type Stage } from "@/lib/progress";
 
 type SubQ = { question: string; query: string };
 type Found = { file: string; subIdx: number; rank: number; of: number; chunks: Hit[] };
@@ -29,19 +30,23 @@ async function decompose(question: string, count: number): Promise<SubQ[]> {
   return [{ question, query: question }, ...ok];
 }
 
-export async function POST(req: Request) {
+export const POST = (req: Request) => withProgress(req, (stage) => ask(req, stage));
+
+async function ask(req: Request, stage: Stage) {
   const body = await req.json().catch(() => ({}));
   const question = readQuestion(body.question);
   if (!question) return fail("Enter a question of up to 500 characters.");
   const deep = body.deep === true;
   const level: Level = body.level in LEVELS ? body.level : "Undergrad";
   try {
+    stage("decompose", "Splitting your question");
     const [meta, subqs] = await Promise.all([paperMeta(), decompose(question, deep ? 3 : 2)]);
     const collection = typeof body.collection === "string" ? body.collection : "all";
     const scope = await scopeFor(collection);
     if (scope && scope.length === 0) return fail("That collection has no papers. Pick another collection.");
 
     // Search each sub-question separately, then merge papers by best rank.
+    stage("retrieve", `Searching the papers (${subqs.length} ${subqs.length === 1 ? "search" : "searches"})`);
     const lists = await Promise.all(subqs.map((s) => retrieve(s.query, deep ? 10 : 6, scope)));
     const found = new Map<string, Found>();
     const order: { file: string; subIdx: number; rank: number; of: number }[] = [];
@@ -67,6 +72,7 @@ export async function POST(req: Request) {
       return `[${i + 1}] ${m.title}${m.year ? ` (${m.year})` : ""}\n${f.chunks.map((c) => clean(c.chunk)).join("\n---\n")}`;
     }).join("\n\n");
 
+    stage("write", "Writing the answer");
     const raw = await complete(
       "You are a research assistant. Use ONLY the numbered sources below. Format exactly:\n" +
         "Line 1: '# ' then a headline of at most 8 words stating what the sources show.\n" +
@@ -102,6 +108,7 @@ export async function POST(req: Request) {
       return hit ? clip(hit.replace(CITE, "").replace(/\*\*/g, "").replace(/\s+([.,])/g, "$1").trim(), 220) : "";
     };
 
+    stage("check", "Checking each cited source");
     const [analyses, alts] = await Promise.all([
       Promise.all(citedFound.map(async (f) => {
         const ex = f.chunks.map((c) => clean(c.chunk)).join("\n---\n");

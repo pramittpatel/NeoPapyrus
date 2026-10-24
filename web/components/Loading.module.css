@@ -1,0 +1,65 @@
+/* Shared loading primitives. Every animation here is switched off under prefers-reduced-motion;
+   the static states (ring with a gap, grey placeholder blocks, ticking seconds) still read as "loading". */
+
+/* ---- Spinner: a ring in currentColor with one open quarter ---- */
+.spinner {
+  flex: none;
+  display: inline-block;
+  box-sizing: border-box;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  opacity: 0.85;
+  vertical-align: middle;
+  animation: spin 0.8s linear infinite;
+}
+.s12 { width: 12px; height: 12px; border-width: 1.75px; }
+.s14 { width: 14px; height: 14px; }
+.s16 { width: 16px; height: 16px; }
+.s20 { width: 20px; height: 20px; border-width: 2.25px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- Skeleton: shimmering placeholder blocks ---- */
+.sk {
+  display: block;
+  flex: none;
+  max-width: 100%;
+  height: 14px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #e4e4e9 0%, #f1f1f4 50%, #e4e4e9 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.lines { display: flex; flex-direction: column; gap: 11px; }
+.row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.grow { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+
+/* ---- Status line (one step: spinner while busy, green check when done) ---- */
+.status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); min-height: 18px; }
+.check { color: var(--good); flex: none; display: inline-flex; }
+
+/* ---- ProgressSteps ---- */
+.steps { display: flex; flex-direction: column; gap: 6px; }
+.steps .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 20px; }
+.step { display: flex; align-items: center; gap: 10px; color: var(--muted); min-width: 0; }
+.icon { flex: none; width: 16px; height: 20px; display: inline-flex; align-items: center; justify-content: center; }
+.dot { width: 6px; height: 6px; border-radius: 999px; background: var(--faint); opacity: 0.55; }
+.label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.done .label { color: var(--ink-4); }
+.current { color: var(--ink); }
+.current .label { font-weight: 600; }
+.current .icon { color: var(--accent); }
+.pending .label { color: var(--faint); }
+.time { flex: none; margin-left: 2px; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.done .time { color: var(--faint); }
+.hint { margin: 2px 0 0 26px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+
+/* ---- FadeIn: results appearing ---- */
+.fade { animation: rise 220ms cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner, .sk, .fade { animation: none; }
+  .sk { background: #e4e4e9; }
+}

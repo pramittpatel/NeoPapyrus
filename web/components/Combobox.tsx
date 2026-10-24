@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import styles from "./Combobox.module.css";
+import { Spinner } from "./Loading";
 
 export type ComboOption = { value: string; label: string; hint?: string };
 
@@ -17,6 +18,8 @@ type Props = {
   emptyText?: string;
   align?: "start" | "end";
   disabled?: boolean;
+  /** Options are still loading: shows a small spinner in place of the chevron. */
+  loading?: boolean;
   /** Optional semantic search: results for queries of 3+ characters are listed after the title matches. */
   aiSearch?: (query: string, signal: AbortSignal) => Promise<ComboOption[]>;
 };
@@ -33,6 +36,7 @@ export default function Combobox({
   emptyText = "No matches",
   align = "start",
   disabled,
+  loading,
   aiSearch,
 }: Props) {
   const uid = useId();
@@ -168,7 +172,8 @@ export default function Combobox({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
-        aria-label={`${label}: ${selected?.label ?? value}`}
+        aria-label={`${label}: ${selected?.label ?? value}${loading ? " (loading options)" : ""}`}
+        aria-busy={loading || undefined}
         disabled={disabled}
         onClick={() => (open ? close(false) : openMenu())}
         onKeyDown={onTriggerKey}
@@ -178,9 +183,11 @@ export default function Combobox({
           {prefix ? `${prefix} ` : ""}
           {selected?.label ?? value}
         </span>
-        <svg className={styles.chevron} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="m6 9 6 6 6-6" />
-        </svg>
+        {loading ? <Spinner size={12} className={styles.chevron} /> : (
+          <svg className={styles.chevron} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        )}
       </button>
       {open && (
         <div className={`${styles.pop} ${align === "end" ? styles.end : styles.start} ${above ? styles.above : ""}`}>
@@ -232,7 +239,7 @@ export default function Combobox({
               </li>,
             ])}
           </ul>
-          {aiBusy && <div className={styles.searching} role="status"><span className={styles.spin} aria-hidden="true" />Searching paper text…</div>}
+          {aiBusy && <div className={styles.searching} role="status"><Spinner size={12} />Searching paper text…</div>}
           {!items.length && !aiBusy && <div className={styles.empty}>{emptyText}</div>}
         </div>
       )}

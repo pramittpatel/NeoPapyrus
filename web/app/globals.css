@@ -98,6 +98,7 @@ a.cite:hover { background: var(--accent); color: #fff; }
 .send { width: 36px; height: 36px; border: 0; border-radius: 999px; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; flex: none; }
 .send:disabled { opacity: 0.35; cursor: not-allowed; }
 .send:not(:disabled):hover { background: #000; }
+.send[aria-busy="true"] { opacity: 1; cursor: progress; }
 
 /* home */
 .home { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; padding: 24px 16px 96px; }
@@ -122,11 +123,6 @@ a.cite:hover { background: var(--accent); color: #fff; }
 .article p { margin: 0; }
 .article h3 { margin: 6px 0 0; font-size: 16px; font-weight: 600; }
 .article ol, .article ul { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; }
-.status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
-.status .done { color: var(--good); flex: none; }
-/* Loading spinner: a rotating ring in currentColor; static under reduced motion (global rule). */
-.spinner { flex: none; width: 14px; height: 14px; border-radius: 999px; border: 2px solid currentColor; border-right-color: transparent; opacity: 0.8; animation: spin 0.8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
 .artifacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .artifact { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; text-align: left; color: var(--ink); width: 100%; }
 .artifact[aria-pressed="true"] { border-color: var(--accent); }
@@ -148,9 +144,6 @@ a.cite:hover { background: var(--accent); color: #fff; }
 .follow { position: sticky; bottom: 0; z-index: 2; width: 100%; max-width: 760px; margin-top: auto; padding: 28px 0 14px; display: flex; flex-direction: column; gap: 10px; background: linear-gradient(to bottom, rgba(243, 243, 245, 0), var(--bg) 24px); }
 .col { padding-bottom: 8px; }
 .meta-row { display: flex; flex-wrap: wrap; gap: 16px; padding: 0 12px; font-size: 12px; color: var(--muted); }
-.skeleton { display: flex; flex-direction: column; gap: 10px; }
-.skeleton i { display: block; height: 14px; border-radius: 6px; background: linear-gradient(90deg, var(--chip), #f0f0f3, var(--chip)); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
-@keyframes shimmer { to { background-position: -200% 0; } }
 .error { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: #8f2b22; background: #fbeceb; border: 1px solid #f0c9c5; padding: 10px 14px; border-radius: 10px; font-size: 14px; }
 
 /* artifact panel */
@@ -325,3 +318,14 @@ a.cite:hover { background: var(--accent); color: #fff; }
 .topic span { font-size: 13px; color: var(--muted); line-height: 1.5; }
 .topic .btn { align-self: flex-start; margin-top: 4px; }
 @media (max-width: 860px) { .ruling-cols { grid-template-columns: 1fr; } }
+
+/* loading placeholders shaped like the final layout (components/Loading.tsx) */
+.answer-loading { display: flex; flex-direction: column; gap: 24px; }
+.artifact.sk-artifact { cursor: default; }
+.artifact.sk-artifact:hover { border-color: var(--line); }
+.debate-progress { padding: 16px 20px; }
+/* source page PDF: spinner overlay until the iframe has loaded, then the PDF fades in */
+.pdf-body { position: relative; flex: 1 1 auto; min-height: 0; display: flex; background: var(--soft); }
+.pdf-pane .pdf-body iframe { opacity: 0; transition: opacity 0.25s ease; }
+.pdf-pane .pdf-body iframe.ready { opacity: 1; }
+.pdf-loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-size: 13px; color: var(--muted); background: var(--soft); }

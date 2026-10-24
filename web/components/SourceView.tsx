@@ -6,6 +6,7 @@ import Citation from "./Citation";
 import CiteStyleToggle from "./CiteStyleToggle";
 import { Check, Copy, External, Minus, Star } from "./Icons";
 import { parseLevel } from "./LevelSlider";
+import { FadeIn, Skeleton, SkeletonRow, SkeletonText, Spinner } from "./Loading";
 import Topbar from "./Topbar";
 import { buildSingleCitationCopy } from "@/lib/copyFormat";
 import { STANCE_LABEL, type AnswerResult } from "@/lib/format";
@@ -24,6 +25,7 @@ export default function SourceView() {
   const [style, setStyle] = useCiteStyle();
   const [saved, setSaved] = useState<string[]>([]);
   const [copied, copy] = useCopy();
+  const [pdfReady, setPdfReady] = useState<string | null>(null); // key of the PDF whose iframe has loaded
 
   useEffect(() => {
     setSaved(loadFavorites());
@@ -37,11 +39,13 @@ export default function SourceView() {
   const p = res?.papers.find((x) => x.n === n) ?? res?.papers[0];
   useTitle(p?.title ?? "");
   useEffect(() => { if (p?.file) recordPapers([{ file: p.file, via: "viewed", question: q || undefined }]); }, [p?.file]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!res || !p) return null;
+  if (!res || !p) return <SourceSkeleton back={q ? answerHref(q, scope) : "/"} />;
 
   const back = answerHref(q, scope);
   const pdf = `/api/pdf?file=${encodeURIComponent(p.file)}`;
   const isSaved = saved.includes(p.file);
+  const pdfKey = `${p.file}-${p.page}`;
+  const pdfLoading = pdfReady !== pdfKey;
 
   return (
     <>
@@ -64,7 +68,7 @@ export default function SourceView() {
         </aside>
 
         <main className="why-main">
-          <div className="why-col wide">
+          <FadeIn className="why-col wide">
             <section className="card">
               <div><span className="tag">{p.family}</span></div>
               <h1>{p.title}</h1>
@@ -137,7 +141,54 @@ export default function SourceView() {
                   <span>{p.page ? <><b>Opened to page {p.page}</b> · where this passage appears</> : <><b>Opened to the first page</b> · couldn&apos;t locate the passage</>}</span>
                   <a className="btn sm" href={`${pdf}${p.page ? `#page=${p.page}` : ""}`} target="_blank" rel="noreferrer"><External size={13} />Open PDF</a>
                 </div>
-                <iframe key={`${p.file}-${p.page}`} title={`PDF: ${p.title}`} src={`${pdf}#page=${p.page ?? 1}&zoom=page-width`} />
+                <div className="pdf-body" aria-busy={pdfLoading}>
+                  <iframe key={pdfKey} className={pdfLoading ? undefined : "ready"} title={`PDF: ${p.title}`} src={`${pdf}#page=${p.page ?? 1}&zoom=page-width`} onLoad={() => setPdfReady(pdfKey)} />
+                  {pdfLoading && <div className="pdf-loading" role="status"><Spinner size={20} />Loading PDF…</div>}
+                </div>
+              </section>
+            </div>
+          </FadeIn>
+        </main>
+      </div>
+    </>
+  );
+}
+
+/** Placeholder with the page's real layout while the cached answer is read (or the answer is being re-run). */
+function SourceSkeleton({ back }: { back: string }) {
+  return (
+    <>
+      <Topbar back={back} newQuestion={false} title={<div className="crumbs" aria-hidden="true"><Skeleton width={180} height={13} /><span className="sep">/</span><Skeleton width={64} height={13} /></div>} />
+      <div className="why-wrap" aria-busy="true" aria-label="Source, loading">
+        <aside className="rail" aria-hidden="true">
+          <div className="eyebrow"><Skeleton width={110} height={12} /></div>
+          {[0, 1, 2, 3].map((i) => (
+            <SkeletonRow key={i} title={["90%", "76%", "84%", "70%"][i]} sub="40%" style={{ padding: 10, border: `1px solid ${i ? "transparent" : "var(--line)"}`, borderRadius: 12, background: i ? undefined : "var(--surface)" }} />
+          ))}
+        </aside>
+        <main className="why-main">
+          <div className="why-col wide">
+            <section className="card" aria-hidden="true">
+              <Skeleton width={96} height={20} radius={6} />
+              <Skeleton width="78%" height={26} />
+              <Skeleton width="46%" height={14} />
+              <div className="btn-row"><Skeleton width={132} height={36} radius={10} /><Skeleton width={144} height={36} radius={10} /></div>
+            </section>
+            <div className="why-grid">
+              <div className="why-left">
+                <section className="card" style={{ gap: 18 }} aria-hidden="true">
+                  <div className="card-head"><Skeleton width="52%" height={18} /><Skeleton width={120} height={24} radius={999} /></div>
+                  {[3, 2, 4, 2].map((n, i) => (
+                    <div key={i} style={{ display: "flex", gap: 14 }}>
+                      <Skeleton width={26} height={26} radius={999} />
+                      <span style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}><Skeleton width="44%" height={14} /><SkeletonText lines={n} height={12} gap={8} /></span>
+                    </div>
+                  ))}
+                </section>
+              </div>
+              <section className="pdf-pane" aria-label="Paper PDF">
+                <div className="pdf-bar"><Skeleton width={220} height={13} /><Skeleton width={92} height={30} radius={10} /></div>
+                <div className="pdf-body"><div className="pdf-loading" role="status"><Spinner size={20} />Loading PDF…</div></div>
               </section>
             </div>
           </div>

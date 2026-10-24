@@ -35,7 +35,7 @@
 .fill {
   position: absolute;
   inset: 0 auto 0 0;
-  width: calc(var(--pad) + var(--thumb-w) - 6px + var(--i) * var(--step));
+  width: calc(2 * var(--pad) + var(--thumb-w) + var(--i) * var(--step));
   border-radius: 999px;
   background: linear-gradient(90deg, #7c75ea, #5047d4);
 }

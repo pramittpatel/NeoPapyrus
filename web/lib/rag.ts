@@ -70,9 +70,12 @@ export type Meta = {
 };
 
 let metaCache: Promise<Record<string, Meta>> | null = null;
+let metaAt = 0;
+const META_TTL = 5 * 60_000; // pick up newly ingested papers without a restart
 
 /** file -> citation metadata. Title/authors/topic come from paper_meta; id, year and url are derived from the arXiv filename. */
 export function paperMeta() {
+  if (Date.now() - metaAt > META_TTL) { metaCache = null; metaAt = Date.now(); }
   metaCache ??= query<{ FILE: string; META: unknown }>("SELECT file, meta FROM paper_meta")
     .then((rows) => {
       const out: Record<string, Meta> = {};

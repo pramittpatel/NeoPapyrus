@@ -1,91 +1,110 @@
-# ⚖️ NeoPapyrus
+# NeoPapyrus
 
-**Plenty of tools summarize papers. NeoPapyrus makes papers argue with each other, then shows you the research gaps nobody has filled yet.**
+**Plenty of tools summarize papers. NeoPapyrus makes them debate, then shows you the research gaps nobody has filled yet.**
 
-Built for the **Best Use of Snowflake** prize. Everything (storage, PDF parsing, embeddings, vector search, LLMs, the web app and usage analytics) runs inside one Snowflake account.
+A research paper discovery assistant for AI in medicine. Ask a question and get an answer that cites the exact passages it came from, see which papers are worth reading, make two papers argue a question, and find the open research questions between them. The papers, parsing, embeddings, search and language model all live in one Snowflake account.
+
+Built for the **Best Use of Snowflake** prize by Pramit Patel, Rohan Karve, Carlos Mata and Chance Caswell. Pitch deck: [`docs/NeoPapyrus.pdf`](docs/NeoPapyrus.pdf).
 
 ## What it does
 
-| Tab | What you get |
+| Feature | What you get |
 |---|---|
-| 🔎 Ask | A cited answer from your papers, a 🟢 Must Read / 🟡 Related / 🔴 Skip badge for each paper, and an explanation level slider (High-schooler / Undergrad / PhD) |
-| 📚 Library | An AI-extracted card per paper: summary, method, key finding, limitations |
-| ⚔️ Debate | Pick two papers and a question. Each side argues using only its own paper's text, then an AI judge rules |
-| 🧭 Research Gaps | Where the papers agree, where they disagree, and 3 open research questions |
-| 📈 Insights | Every question is logged to a table: most-cited papers, recent questions, AI-grouped themes |
-| 💻 CLI | `NeoPapyrus_cli.py` asks your papers a question from a terminal through the Cortex REST API |
+| **Ask** | A cited answer at a High school, Undergrad or PhD level. Every `[n]` jumps to its source. Each cited paper gets an evidence stance, an evidence matrix and a topic map. |
+| **Why this paper** | For each source: the sub-question it answered, the search that found it, the passage it relied on, and where the answer uses it, next to the real PDF opened to that page. |
+| **Paper debate** (flagship) | Pick a paper, or let NeoPapyrus pick the best match. It then finds the paper whose evidence most challenges it. Each side argues only from its own text. The judge rules on where they agree and disagree, weighs publication recency, lists the **research gaps** neither paper fills, and proposes **research topics** to fill them. |
+| **Research gaps** | For any topic: where the papers agree, where they disagree, and what is still open. |
+| **Citations** | APA 7, MLA 9 and BibTeX built from paper metadata, not written by the model. Copy as a formatted reference list (hanging indent, alphabetical, italics), copy the answer with in-text citations, or download RTF / `.bib`. |
+| **Library** | Your recent papers and favorites. Collections scope any search to team papers, arXiv papers or a topic. |
 
-## Snowflake features used
+## Corpus
 
-| Feature | Use |
-|---|---|
-| Internal stage + directory table | Store and list the PDFs |
-| `AI_PARSE_DOCUMENT` | PDF to text, keeping the layout |
-| `SNOWFLAKE.CORTEX.SPLIT_TEXT_RECURSIVE_CHARACTER` | Split papers into overlapping chunks |
-| `AI_EMBED` + `VECTOR` type | Embeddings for each chunk |
-| Cortex Search Service | Managed hybrid keyword + vector retrieval for RAG |
-| `AI_COMPLETE` (Llama 3.3 70B, open-weight) | Answers, verdicts, debates, gaps, cards, themes |
-| `VARIANT`, `ARRAY`, `TRY_PARSE_JSON`, `FLATTEN` | Library cards and the question log |
-| Streamlit in Snowflake | The web app, hosted inside the account |
-| Snowpark Python | App-to-data access |
-| Cortex REST API + Python connector | The laptop command-line client |
+128 papers, 8,659 searchable passages:
+
+- **17 team papers**: peer-reviewed clinical AI papers (BMJ Open, JMIR, Journal of Medical Systems, Communications Medicine and others), staged in `RESEARCH_DB` and copied into the app's stage. This is the default collection.
+- **111 arXiv papers** on medical AI, fetched with `fetch_papers.py`.
+
+PDFs are not committed (`papers/` is git-ignored).
 
 ## Architecture
 
 ```
-PDFs -> Stage -> PARSE_DOCUMENT -> papers_raw -> SPLIT_TEXT -> chunks (+ EMBED_TEXT_768 vectors)
-                                          \-> COMPLETE -> paper_cards
-User -> Streamlit in Snowflake -> vector search on chunks -> COMPLETE with cited excerpts -> answer
-                               \-> question_log -> Insights tab
-Laptop -> NeoPapyrus_cli.py -> vector search (connector) + Cortex REST API -> answer
+PDFs ─► internal stage ─► AI_PARSE_DOCUMENT (per page) ─► paper_pages ─► papers_raw
+                                                                 │
+          SPLIT_TEXT_RECURSIVE_CHARACTER + AI_EMBED ◄─────────────┘
+                         │
+                         ▼
+          chunks ─► Cortex Search Service (hybrid keyword + vector)
+          AI_COMPLETE ─► paper_cards (summaries), paper_meta (title, authors, year, venue, topic)
+
+Browser ─► Next.js route handlers (Snowflake Node SDK, credentials stay server-side)
+             ├─ /api/ask      split question ─► search each part ─► AI_COMPLETE cited answer ─► per-paper stance
+             ├─ /api/debate   best match ─► strongest counterpoint ─► arguments ─► judge: agree / disagree / recency / gaps / topics
+             ├─ /api/gaps, /api/library, /api/collections, /api/papers/search
+             └─ /api/pdf      GET_PRESIGNED_URL ─► streams the staged PDF
 ```
 
-## Setup
+Ask and Debate stream real progress steps to the browser while they run. `streamlit_app.py` is a Streamlit-in-Snowflake version of the core features.
 
-1. Copy `.env.example` to `.env` and fill in credentials. Install with `pip install -r requirements.txt`.
-2. `python upload_papers.py` (PDFs from `papers/`), then `python run_sql.py setup.sql` (or run `setup.sql` block by block in Snowsight). New accounts block legacy `SNOWFLAKE.CORTEX.*` functions, so this uses the AI_* functions.
-   Local test: `streamlit run streamlit_app.py`.
-3. Create a Streamlit app (Projects -> Streamlit -> + Streamlit App) in `NeoPapyrus.PUBLIC`, paste `streamlit_app.py` and click Run.
-4. Optional CLI: `pip install -r requirements.txt`, set `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PASSWORD` (and `SNOWFLAKE_PAT` for the REST API), then run `python NeoPapyrus_cli.py "your question"`.
+### Snowflake features used
 
-> Never commit passwords or tokens. Keep them in environment variables.
-
-## Web app (Next.js)
-
-`web/` is the main site, built from the design prototypes. Server-side route handlers (`web/app/api/*`) talk to Snowflake through the Node SDK, so credentials never reach the browser.
-
-```
-cd web && npm install
-cp ../.env .env.local        # SNOWFLAKE_ACCOUNT / USER / PASSWORD / ROLE / WAREHOUSE, optional CORTEX_MODEL
-npm run dev -- -p 3000       # http://localhost:3000
-```
-
-| Screen | What it does |
+| Feature | Used for |
 |---|---|
-| Home | Ask a question; scope it to a collection (team papers, arXiv papers or a topic); Deep search runs more queries |
-| Answer | Cited answer; clicking a `[n]` chip jumps to that source; evidence matrix and topic map panel; APA / MLA / BibTeX; copy as formatted text; download citations |
-| Source | Why the paper was chosen (sub-question, query, passage, where the answer uses it) next to the real PDF, opened to the cited page |
-| Library | Every indexed paper with a typeable filter, collection filter and saved papers |
-| Debate / Gaps | Two papers argue one question; agree / disagree / open-gaps summary |
+| Internal stage + directory table, `COPY FILES` | Storing the PDFs; copying the team papers in from `RESEARCH_DB` |
+| `AI_PARSE_DOCUMENT` (layout, page split) | PDF to text, kept per page so citations open the PDF on the right page |
+| `SPLIT_TEXT_RECURSIVE_CHARACTER` | Overlapping passages |
+| `AI_EMBED` + `VECTOR` | Passage embeddings (`snowflake-arctic-embed-m-v1.5`) |
+| Cortex Search Service | Hybrid retrieval for answers, debates, gaps and the paper picker |
+| `AI_COMPLETE` (Llama 3.3 70B, open weights) | Sub-questions, answers, stances, debate arguments, rulings, cards, metadata, topics |
+| `VARIANT`, `ARRAY`, `FLATTEN`, `OBJECT_INSERT` | Paper cards, metadata and the question log |
+| `GET_PRESIGNED_URL` | Serving staged PDFs to the in-app viewer |
+| Streamlit in Snowflake + Snowpark | `streamlit_app.py` |
 
-How an answer is built: the question is split into sub-questions, each is searched with the Cortex Search Service, results are merged by paper, the model writes a cited answer from those passages, and each cited paper gets a short stance and summary. Citations are generated from paper metadata, not by the model. The PDF page is found by matching the passage against per-page text stored in `paper_pages`.
+New accounts can't use the legacy `SNOWFLAKE.CORTEX.COMPLETE` / `EMBED_TEXT_768` / `PARSE_DOCUMENT` functions, so everything uses the `AI_*` functions.
 
-## Adding papers
+## Repository layout
 
-1. Put PDFs on the stage: `python upload_papers.py` (from `papers/`), or copy them from another stage with `COPY FILES INTO @NeoPapyrus.PUBLIC.papers FROM @<db>.<schema>.<stage>`.
-2. `python ingest.py` indexes only what is new (pages, chunks, library cards, citation metadata, topics) and rebuilds the search service. `fetch_papers.py` downloads more arXiv papers politely and can be re-run.
+| Path | What it is |
+|---|---|
+| `web/` | The Next.js app (App Router, React 19, TypeScript) |
+| `setup.sql` | One-time Snowflake setup: database, stage, base tables, search service |
+| `ingest.py` | Incremental indexing of everything on the stage (pages, passages, cards, metadata, topics, search service) |
+| `fetch_papers.py`, `upload_papers.py` | Download arXiv PDFs into `papers/` and upload them to the stage |
+| `run_sql.py` | Run a `.sql` file statement by statement |
+| `streamlit_app.py` | Streamlit-in-Snowflake app |
+| `neopapyrus_cli.py` | Ask from a terminal through the Cortex REST API (needs a PAT and a network policy) |
+| `docs/` | Pitch deck and the design prototypes the UI was built from |
 
-## Why a web app
+## Running it
 
-The project is built on Snowflake, and the work happens on laptops, so a Streamlit web app running inside Snowflake is the best fit. The REST API means a mobile app could use the same backend later.
+Requirements: a Snowflake account with Cortex AI functions, Python 3.12, Node 20+.
 
-## Team
+```bash
+cp .env.example .env                 # fill in your Snowflake credentials
+python -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-- Pramit Patel
-- Rohan Karve
-- Carlos Mata
-- Chance Caswell
+.venv/bin/python run_sql.py setup.sql          # database, stage, tables, search service
+.venv/bin/python fetch_papers.py               # optional: download arXiv papers into papers/
+.venv/bin/python upload_papers.py              # upload papers/*.pdf to the stage
+.venv/bin/python ingest.py                     # index everything new (--only team|arxiv|all)
 
-## Model choice
+cd web && npm install
+cp ../.env .env.local
+npm run dev                                    # http://localhost:3000
+```
 
-Default is `llama3.3-70b` (open-weight, fastest, cheapest of the models tested; answers are shorter). Set in `MODELS` in `streamlit_app.py` and `NeoPapyrus_MODEL` for the CLI. Also working on our account: `claude-sonnet-5-5`, `claude-haiku-5-5`, `openai-gpt-5.2`. Legacy and blocked: `mistral-large2`, `mistral-large`. Per-model rates are not verified; check Snowflake's Service Consumption Table before switching.
+The default model is `llama3.3-70b`. Set `CORTEX_MODEL` to change it.
+
+## Demo script
+
+1. **Paper debate**: leave both sides on Auto and ask *"Should hospitals adopt LLMs like DeepSeek now, or wait for more evidence?"* A review of systematic reviews ("not yet ready for autonomous deployment") faces the DeepSeek paper (deployed in 90 hospitals, "a 40-fold increase in efficiency"), which was chosen automatically. Point out the recency badges, the ruling, the research gaps and the proposed studies.
+2. **Ask**: *"Can large language models be used for clinical prediction?"* Click a `[n]` chip, then "Why this?" to show the passage next to the PDF.
+3. **Copy references** in APA and paste into Google Docs to show the formatted reference list.
+
+Backup debate questions: *"Is hallucination a deal-breaker for using LLMs in medicine?"* and *"Can AI reliably detect lung and pulmonary nodules?"*
+
+## Notes
+
+- **Research aid only. Not medical advice.**
+- Credentials live in `.env` / `web/.env.local`, which are git-ignored. The web app has no login or rate limiting, so don't expose it publicly beyond a demo.
+- Summaries, stances and metadata are model-generated. Check the paper before relying on them.

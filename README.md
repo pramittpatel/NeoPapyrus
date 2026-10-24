@@ -20,11 +20,11 @@ Built for the **Best Use of Snowflake** prize. Everything (storage, PDF parsing,
 | Feature | Use |
 |---|---|
 | Internal stage + directory table | Store and list the PDFs |
-| `SNOWFLAKE.CORTEX.PARSE_DOCUMENT` | PDF to text, keeping the layout |
+| `AI_PARSE_DOCUMENT` | PDF to text, keeping the layout |
 | `SNOWFLAKE.CORTEX.SPLIT_TEXT_RECURSIVE_CHARACTER` | Split papers into overlapping chunks |
-| `SNOWFLAKE.CORTEX.EMBED_TEXT_768` + `VECTOR` type | Embeddings for each chunk |
-| `VECTOR_COSINE_SIMILARITY` | Semantic search (retrieval for RAG) |
-| `SNOWFLAKE.CORTEX.COMPLETE` (Mistral Large 2, Llama 3.1, open-weight) | Answers, verdicts, debates, gaps, cards, themes |
+| `AI_EMBED` + `VECTOR` type | Embeddings for each chunk |
+| Cortex Search Service | Managed hybrid keyword + vector retrieval for RAG |
+| `AI_COMPLETE` (Llama 3.3 70B, open-weight) | Answers, verdicts, debates, gaps, cards, themes |
 | `VARIANT`, `ARRAY`, `TRY_PARSE_JSON`, `FLATTEN` | Library cards and the question log |
 | Streamlit in Snowflake | The web app, hosted inside the account |
 | Snowpark Python | App-to-data access |
@@ -42,7 +42,9 @@ Laptop -> papercourt_cli.py -> vector search (connector) + Cortex REST API -> an
 
 ## Setup
 
-1. In a Snowsight SQL worksheet, run `setup.sql` one block at a time. Upload your PDFs to the `PAPERS` stage after Block 2.
+0. Copy `.env.example` to `.env` and fill in credentials. Install with `pip install -r requirements.txt`.
+1. `python upload_papers.py` (PDFs from `papers/`), then `python run_sql.py setup.sql` (or run `setup.sql` block by block in Snowsight). New accounts block legacy `SNOWFLAKE.CORTEX.*` functions, so this uses the AI_* functions.
+   Local test: `streamlit run streamlit_app.py`.
 2. Create a Streamlit app (Projects -> Streamlit -> + Streamlit App) in `PAPERCOURT.PUBLIC`, paste `streamlit_app.py` and click Run.
 3. Optional CLI: `pip install -r requirements.txt`, set `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PASSWORD` (and `SNOWFLAKE_PAT` for the REST API), then run `python papercourt_cli.py "your question"`.
 
@@ -57,3 +59,7 @@ The project is built on Snowflake, and the work happens on laptops, so a Streaml
 - Pramit Patel
 - Rohan Karve
 - Carlos mata
+
+## Model choice
+
+Default is `llama3.3-70b` (open-weight, fastest, cheapest of the models tested; answers are shorter). Set in `MODELS` in `streamlit_app.py` and `PAPERCOURT_MODEL` for the CLI. Also working on our account: `claude-sonnet-5-5`, `claude-haiku-5-5`, `openai-gpt-5.2`. Legacy and blocked: `mistral-large2`, `mistral-large`. Per-model rates are not verified; check Snowflake's Service Consumption Table before switching.

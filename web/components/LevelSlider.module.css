@@ -13,7 +13,7 @@
 .track {
   --w: 232px;
   --h: 30px;
-  --thumb-w: 46px;
+  --thumb-w: 22px;
   --thumb-h: 22px;
   --pad: 4px;
   --step: calc((var(--w) - 2 * var(--pad) - var(--thumb-w)) / var(--n));

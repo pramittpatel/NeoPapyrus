@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Combobox from "@/components/Combobox";
 import ErrorNote from "@/components/ErrorNote";
 import { Send } from "@/components/Icons";
@@ -27,6 +27,11 @@ export default function Debate() {
   const options = useMemo(() => papers.map((p) => ({
     value: p.file, label: p.title ?? p.file, hint: [p.authors[0] ? `${p.authors[0]}${p.authors.length > 1 ? " et al." : ""}` : "", p.year].filter(Boolean).join(" · "),
   })), [papers]);
+  const searchPapers = useCallback(async (q: string, signal: AbortSignal) => {
+    const r = await fetch(`/api/papers/search?q=${encodeURIComponent(q)}`, { signal });
+    const d = (await r.json()) as { results?: { file: string; title: string; snippet: string }[] };
+    return (d.results ?? []).map((x) => ({ value: x.file, label: x.title, hint: x.snippet }));
+  }, []);
   const nameOf = (file: string) => options.find((o) => o.value === file)?.label ?? file;
   const same = !!a && a === b;
 
@@ -49,8 +54,8 @@ export default function Debate() {
         <p className="lede">Pick two papers and a question. Each paper argues its side using only its own text, then a ruling weighs them.</p>
 
         <div className="field-row">
-          <div className="field"><span aria-hidden="true">Paper A</span><Combobox variant="field" label="Paper A" options={options} value={a} onChange={setA} searchPlaceholder="Search papers by title or author…" /></div>
-          <div className="field"><span aria-hidden="true">Paper B</span><Combobox variant="field" label="Paper B" options={options} value={b} onChange={setB} searchPlaceholder="Search papers by title or author…" /></div>
+          <div className="field"><span aria-hidden="true">Paper A</span><Combobox variant="field" label="Paper A" options={options} value={a} onChange={setA} searchPlaceholder="Search by title, author or a topic…" aiSearch={searchPapers} /></div>
+          <div className="field"><span aria-hidden="true">Paper B</span><Combobox variant="field" label="Paper B" options={options} value={b} onChange={setB} searchPlaceholder="Search by title, author or a topic…" aiSearch={searchPapers} /></div>
         </div>
         {same && <p className="muted" role="status">Pick two different papers.</p>}
 

@@ -17,6 +17,8 @@ type Props = {
   emptyText?: string;
   align?: "start" | "end";
   disabled?: boolean;
+  /** Optional semantic search: results for queries of 3+ characters are listed after the title matches. */
+  aiSearch?: (query: string, signal: AbortSignal) => Promise<ComboOption[]>;
 };
 
 export default function Combobox({
@@ -31,6 +33,7 @@ export default function Combobox({
   emptyText = "No matches",
   align = "start",
   disabled,
+  aiSearch,
 }: Props) {
   const uid = useId();
   const listId = `${uid}-list`;
@@ -43,6 +46,9 @@ export default function Combobox({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
+  const [ai, setAi] = useState<{ q: string; items: ComboOption[] } | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+
   const selected = options.find((o) => o.value === value);
 
   const filtered = useMemo(() => {
@@ -53,6 +59,27 @@ export default function Combobox({
       return tokens.every((t) => hay.includes(t));
     });
   }, [options, query]);
+
+  const term = query.trim();
+  useEffect(() => {
+    if (!open || !aiSearch || term.length < 3) { setAi(null); setAiBusy(false); return; }
+    const ctl = new AbortController();
+    setAiBusy(true);
+    const t = setTimeout(() => {
+      aiSearch(term, ctl.signal)
+        .then((items) => { if (!ctl.signal.aborted) setAi({ q: term, items }); })
+        .catch(() => { if (!ctl.signal.aborted) setAi({ q: term, items: [] }); })
+        .finally(() => { if (!ctl.signal.aborted) setAiBusy(false); });
+    }, 350);
+    return () => { clearTimeout(t); ctl.abort(); };
+  }, [open, aiSearch, term]);
+
+  const aiExtra = useMemo(() => {
+    if (!ai || ai.q !== term) return [];
+    const shown = new Set(filtered.map((o) => o.value));
+    return ai.items.filter((o) => !shown.has(o.value));
+  }, [ai, term, filtered]);
+  const items = useMemo(() => [...filtered, ...aiExtra], [filtered, aiExtra]);
 
   const openMenu = () => {
     if (disabled) return;
@@ -88,8 +115,8 @@ export default function Combobox({
   }, [open]);
 
   useEffect(() => {
-    if (open) listRef.current?.children[active]?.scrollIntoView({ block: "nearest" });
-  }, [open, active, filtered]);
+    if (open) document.getElementById(`${uid}-opt-${active}`)?.scrollIntoView({ block: "nearest" });
+  }, [open, active, items, uid]);
 
   const onTriggerKey = (e: KeyboardEvent) => {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -99,7 +126,7 @@ export default function Combobox({
   };
 
   const onInputKey = (e: KeyboardEvent) => {
-    const n = filtered.length;
+    const n = items.length;
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
@@ -117,7 +144,7 @@ export default function Combobox({
         break;
       case "Enter":
         e.preventDefault();
-        if (filtered[active]) select(filtered[active]);
+        if (items[active]) select(items[active]);
         break;
       case "Escape":
         e.preventDefault();
@@ -130,7 +157,7 @@ export default function Combobox({
     }
   };
 
-  const activeId = filtered[active] ? `${uid}-opt-${active}` : undefined;
+  const activeId = items[active] ? `${uid}-opt-${active}` : undefined;
 
   return (
     <div ref={wrapRef} className={`${styles.wrap} ${variant === "field" ? styles.wrapField : ""}`}>
@@ -179,7 +206,10 @@ export default function Combobox({
             onKeyDown={onInputKey}
           />
           <ul ref={listRef} id={listId} role="listbox" aria-label={label} className={styles.list}>
-            {filtered.map((o, i) => (
+            {items.map((o, i) => [
+              i === filtered.length && aiExtra.length > 0 && (
+                <li key="ai-head" role="presentation" className={styles.group}>AI matches for “{term}”</li>
+              ),
               <li
                 key={o.value}
                 id={`${uid}-opt-${i}`}
@@ -199,10 +229,11 @@ export default function Combobox({
                     <path d="M20 6 9 17l-5-5" />
                   </svg>
                 )}
-              </li>
-            ))}
+              </li>,
+            ])}
           </ul>
-          {!filtered.length && <div className={styles.empty}>{emptyText}</div>}
+          {aiBusy && <div className={styles.searching} role="status"><span className={styles.spin} aria-hidden="true" />Searching paper text…</div>}
+          {!items.length && !aiBusy && <div className={styles.empty}>{emptyText}</div>}
         </div>
       )}
     </div>

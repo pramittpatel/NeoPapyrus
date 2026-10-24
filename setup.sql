@@ -1,4 +1,4 @@
--- PaperCourt setup (AI Functions: AI_PARSE_DOCUMENT / AI_EMBED / AI_COMPLETE).
+-- NeoPapyrus setup (AI Functions: AI_PARSE_DOCUMENT / AI_EMBED / AI_COMPLETE).
 -- New accounts are blocked from legacy SNOWFLAKE.CORTEX.COMPLETE/EMBED/PARSE functions.
 -- Run all at once with: python run_sql.py setup.sql   (or one block at a time in Snowsight)
 

@@ -50,7 +50,7 @@ export default function Shell({ children }: { children: ReactNode }) {
       <div className="shell">
         {open && <button className="scrim" aria-label="Close sidebar" onClick={toggle} />}
         <aside className={`sidebar${open ? " open" : ""}`} aria-label="Sidebar" inert={!open}>
-          <div className="sidebar-brand">Research Paper Assistant</div>
+          <div className="sidebar-brand">NeoPapyrus</div>
           <nav className="sidebar-nav" aria-label="Main">
             {nav.map((n) => (
               <Link key={n.href} href={n.href} aria-current={path === n.href || (n.href === "/" && path.startsWith("/answer")) ? "page" : undefined}>{n.icon}{n.label}</Link>

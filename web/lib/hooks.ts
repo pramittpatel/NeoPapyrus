@@ -45,5 +45,5 @@ export function useFlash(prefix: string): [number | null, (n: number) => void] {
 }
 
 export function useTitle(title: string) {
-  useEffect(() => { document.title = title ? `${title} · Research Paper Assistant` : "Research Paper Assistant"; }, [title]);
+  useEffect(() => { document.title = title ? `${title} · NeoPapyrus` : "NeoPapyrus"; }, [title]);
 }

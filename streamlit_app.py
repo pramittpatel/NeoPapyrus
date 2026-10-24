@@ -1,4 +1,4 @@
-"""PaperCourt - cited Q&A over AI-in-medicine papers. Runs in Streamlit in Snowflake."""
+"""NeoPapyrus - cited Q&A over AI-in-medicine papers. Runs in Streamlit in Snowflake."""
 import json
 import streamlit as st
 
@@ -63,7 +63,7 @@ def log(tab, question, hits):
 RULES = ("Answer ONLY from the numbered excerpts. Cite every claim like [1]. "
          "If the excerpts don't contain the answer, say so. Be concise.")
 
-st.title("PaperCourt")
+st.title("NeoPapyrus")
 st.caption(DISCLAIMER)
 ask_t, debate_t, gaps_t, lib_t, ins_t = st.tabs(["Ask", "Debate", "Gaps", "Library", "Insights"])
 

@@ -7,7 +7,7 @@ const inter = Inter({ variable: "--font-inter", subsets: ["latin"], weight: ["40
 const mono = JetBrains_Mono({ variable: "--font-mono", subsets: ["latin"], weight: ["400", "500"] });
 
 export const metadata: Metadata = {
-  title: "Research Paper Assistant",
+  title: "NeoPapyrus",
   description: "Ask a research question and get an answer that cites the exact papers and passages behind it.",
 };
 

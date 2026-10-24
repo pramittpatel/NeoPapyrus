@@ -294,3 +294,34 @@ a.cite:hover { background: var(--accent); color: #fff; }
 .sources li.flash .cite, .row-card.flash .cite { background: var(--surface); }
 .pick-note { display: flex; align-items: flex-start; gap: 6px; margin: -4px 0 4px; font-size: 12.5px; line-height: 1.45; color: var(--accent-ink); }
 .pick-note svg { flex: none; margin-top: 3px; }
+
+/* debate: sides, recency, ruling, gaps, topics */
+.debate .side { gap: 8px; }
+.side-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.side-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-right: 2px; }
+.year-badge { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink-3); background: var(--chip); border-radius: 999px; padding: 2px 9px; }
+.year-badge.unknown { font-weight: 500; color: var(--muted); }
+.newer-badge { font-size: 12px; font-weight: 500; color: var(--good); background: var(--good-bg); border-radius: 999px; padding: 2px 9px; }
+.debate .side-title { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.35; letter-spacing: -0.005em; }
+.debate .side .by { font-size: 13px; color: var(--muted); }
+.debate .side-arg { margin-top: 4px; }
+.debate .ruling h2, .gaps-card h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.ruling-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.ruling-cols .eyebrow { margin-bottom: 8px; }
+.ruling-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 1.5; }
+.ruling-list li { display: flex; gap: 8px; align-items: flex-start; }
+.ruling-list.agree svg { color: var(--good); flex: none; margin-top: 4px; }
+.ruling-list .vs { flex: none; width: 13px; text-align: center; font-weight: 700; color: var(--warn); }
+.recency { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px; padding-top: 12px; border-top: 1px solid var(--line-2); }
+.debate .recency p { flex: 1 1 280px; margin: 0; font-size: 14px; color: var(--ink-3); white-space: normal; }
+.gaps-card { grid-column: 1 / -1; }
+.debate .gaps-card .muted { margin-top: -4px; font-size: 13px; white-space: normal; }
+.gap-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14.5px; line-height: 1.5; }
+.gap-list li::marker { color: var(--warn); }
+.topics { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.topic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.topic { display: flex; flex-direction: column; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 12px; padding: 14px 16px; }
+.topic b { font-size: 14.5px; font-weight: 600; line-height: 1.4; }
+.topic span { font-size: 13px; color: var(--muted); line-height: 1.5; }
+.topic .btn { align-self: flex-start; margin-top: 4px; }
+@media (max-width: 860px) { .ruling-cols { grid-template-columns: 1fr; } }

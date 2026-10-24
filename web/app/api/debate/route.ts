@@ -5,6 +5,9 @@ const RULES =
   "If the excerpts do not address the question, say so. Be concise (under 120 words).";
 const AUTO = "auto";
 
+type Topic = { title: string; why: string };
+type Ruling = { agree: string[]; disagree: string[]; recency: string; gaps: string[]; topics: Topic[] };
+
 /** Distinct papers in rank order, with up to two passages each. */
 function byPaper(hits: Hit[], exclude: string[]) {
   const out = new Map<string, Hit[]>();
@@ -16,11 +19,15 @@ function byPaper(hits: Hit[], exclude: string[]) {
   return [...out];
 }
 
-const argue = (side: "A" | "B", hits: Hit[], question: string, opponent?: string) =>
+type Paper = { title: string; year: string };
+const dated = (p: Paper) => `"${p.title}" (${p.year || "year unknown"})`;
+
+const argue = (side: "A" | "B", paper: Paper, hits: Hit[], question: string, opponent?: { paper: Paper; arg: string }) =>
   complete(
-    `You are the advocate for paper ${side}. ${RULES}\n` +
+    `You are the advocate for paper ${side}, ${dated(paper)}. ${RULES}\n` +
       (opponent
-        ? `Paper A argued: ${opponent}\nRespond from your paper's evidence: lead with where it disagrees with, qualifies or adds caveats to Paper A; then what it adds. If your paper actually agrees, say so plainly.\n`
+        ? `Paper A, ${dated(opponent.paper)}, argued: ${opponent.arg}\nRespond from your paper's evidence: lead with where it disagrees with, qualifies or adds caveats to Paper A; then what it adds. ` +
+          "If one paper is clearly newer, you may note what that means for the evidence. If your paper actually agrees, say so plainly.\n"
         : "") +
       `Excerpts:\n${contextBlock(hits)}\nQuestion: ${question}`,
   );
@@ -40,6 +47,7 @@ export async function POST(req: Request) {
     const meta = await paperMeta();
     for (const f of [a, b]) if (f !== AUTO && !meta[f]) return fail("One of the selected papers is no longer in the library. Pick it again.");
     const titleOf = (f: string) => meta[f]?.title ?? f;
+    const paperOf = (f: string): Paper => ({ title: titleOf(f), year: meta[f]?.year ?? "" });
 
     let fileA = a;
     let whyA = "";
@@ -50,7 +58,7 @@ export async function POST(req: Request) {
       whyA = "Best match for the question.";
     }
     const ha = await retrieve(question, 4, fileA);
-    const argA = await argue("A", ha, question);
+    const argA = await argue("A", paperOf(fileA), ha, question);
 
     let fileB = b;
     let whyB = "";
@@ -69,17 +77,35 @@ export async function POST(req: Request) {
       whyB = typeof pick?.reason === "string" && pick.reason ? pick.reason : "Strongest available counterpoint to Paper A.";
     }
     const hb = await retrieve(question, 4, fileB);
-    const argB = await argue("B", hb, question, argA);
+    const argB = await argue("B", paperOf(fileB), hb, question, { paper: paperOf(fileA), arg: argA });
 
-    const verdict = await complete(
-      "You are the judge. State where A and B agree and where they disagree, using only these arguments. Do not use bracketed numbers. " +
-        `Do not add facts. If they do not actually conflict, say so.\nQuestion: ${question}\nA: ${argA}\nB: ${argB}`,
+    const excerpts = (hs: Hit[]) => hs.map((h) => h.chunk.slice(0, 700)).join("\n---\n");
+    const raw = await completeJson<Partial<Ruling>>(
+      "You are the judge of a debate between two research papers. Use ONLY the arguments and excerpts below; do not add facts. " +
+        "Reply with ONLY JSON with these keys:\n" +
+        '"agree": up to 3 short points both papers support; "disagree": up to 3 short points where they conflict (empty if they do not really conflict); ' +
+        '"recency": one sentence on how the publication years affect the weight of each side (newer evidence, older baseline, or unknown years); ' +
+        '"gaps": 2-4 specific things the question needs that NEITHER paper establishes (missing populations, outcomes, settings, study designs, follow-up, comparisons); ' +
+        '"topics": 2-3 research studies that would close those gaps, each {"title": a specific study title naming the population, the intervention or model, the comparison and the outcome, 8-16 words (e.g. "Multicentre trial of LLM-assisted discharge follow-up versus usual care on 90-day readmissions"), "why": one sentence naming the gap it closes}.\n\n' +
+        `Question: ${question}\nPaper A ${dated(paperOf(fileA))} argued: ${argA}\nPaper B ${dated(paperOf(fileB))} argued: ${argB}\n\n` +
+        `Excerpts from A:\n${excerpts(ha)}\n\nExcerpts from B:\n${excerpts(hb)}`,
     );
+    const list = (v: unknown, n: number) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x.trim()).slice(0, n) : []);
+    const ruling: Ruling = {
+      agree: list(raw?.agree, 3),
+      disagree: list(raw?.disagree, 3),
+      recency: typeof raw?.recency === "string" ? raw.recency : "",
+      gaps: list(raw?.gaps, 4),
+      topics: (Array.isArray(raw?.topics) ? raw.topics : [])
+        .filter((t): t is Topic => !!t && typeof t.title === "string" && typeof t.why === "string")
+        .slice(0, 3),
+    };
+    if (!ruling.agree.length && !ruling.disagree.length) return fail("The judge's ruling could not be read. Try again.", 502);
     await logQuestion("Debate", question, [...ha, ...hb]);
     return Response.json({
-      a: { file: fileA, title: titleOf(fileA), arg: argA, auto: a === AUTO, why: whyA },
-      b: { file: fileB, title: titleOf(fileB), arg: argB, auto: b === AUTO, why: whyB },
-      verdict,
+      a: { file: fileA, ...paperOf(fileA), venue: meta[fileA]?.venue ?? "", arg: argA, auto: a === AUTO, why: whyA },
+      b: { file: fileB, ...paperOf(fileB), venue: meta[fileB]?.venue ?? "", arg: argB, auto: b === AUTO, why: whyB },
+      ruling,
     });
   } catch (e) {
     return serverError(e);

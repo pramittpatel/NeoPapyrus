@@ -3,13 +3,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AutoGrowTextarea from "@/components/AutoGrowTextarea";
 import Combobox, { type ComboOption } from "@/components/Combobox";
 import ErrorNote from "@/components/ErrorNote";
-import { Send, Spark } from "@/components/Icons";
+import Link from "next/link";
+import { Check, Search, Send, Spark } from "@/components/Icons";
 import Topbar from "@/components/Topbar";
 import { useTitle } from "@/lib/hooks";
+import { answerHref } from "@/lib/links";
 
 type Paper = { file: string; title: string | null; authors: string[]; year: string | null };
-type Side = { file: string; title: string; arg: string; auto: boolean; why: string };
-type Result = { a: Side; b: Side; verdict: string };
+type Side = { file: string; title: string; year: string; venue: string; arg: string; auto: boolean; why: string };
+type Topic = { title: string; why: string };
+type Ruling = { agree: string[]; disagree: string[]; recency: string; gaps: string[]; topics: Topic[] };
+type Result = { a: Side; b: Side; ruling: Ruling };
 
 const AUTO = "auto";
 const AUTO_A: ComboOption = { value: AUTO, label: "Auto: best match", hint: "The paper that best answers your question" };
@@ -53,14 +57,21 @@ export default function Debate() {
   }
 
   const status = b === AUTO
-    ? a === AUTO ? "Finding the best paper for the question, then the paper that most challenges it…" : "Paper A is arguing, then the strongest counterpoint is being found…"
-    : "Both papers are arguing their side…";
+    ? a === AUTO ? "Finding the best paper for the question, then the paper that most challenges it, then judging gaps…" : "Paper A is arguing, then the strongest counterpoint is being found…"
+    : "Both papers are arguing their side, then the judge looks for gaps…";
 
-  const card = (label: "A" | "B", s: Side) => (
-    <section className="card">
-      <h2 className="cap">{label} · {s.title}</h2>
+  const year = (s: Side) => Number(s.year) || 0;
+  const card = (label: "A" | "B", s: Side, other: Side) => (
+    <section className="card side">
+      <div className="side-head">
+        <span className="side-label">Paper {label}</span>
+        <span className={`year-badge${s.year ? "" : " unknown"}`} title="Publication year">{s.year || "Year unknown"}</span>
+        {year(s) > 0 && year(other) > 0 && year(s) > year(other) && <span className="newer-badge">Newer by {year(s) - year(other)} {year(s) - year(other) === 1 ? "year" : "years"}</span>}
+      </div>
+      <h2 className="side-title">{s.title}</h2>
+      {s.venue && <div className="by">{s.venue}</div>}
       {s.auto && <div className="pick-note"><Spark size={12} />Chosen automatically{s.why ? `: ${s.why}` : ""}</div>}
-      <p>{s.arg}</p>
+      <p className="side-arg">{s.arg}</p>
     </section>
   );
 
@@ -91,9 +102,51 @@ export default function Debate() {
         {err && <ErrorNote message={err} onRetry={go} />}
         {res && (
           <div className="debate">
-            {card("A", res.a)}
-            {card("B", res.b)}
-            <section className="card ruling"><h2 className="cap">Ruling</h2><p>{res.verdict}</p></section>
+            {card("A", res.a, res.b)}
+            {card("B", res.b, res.a)}
+
+            <section className="card ruling">
+              <h2>Ruling</h2>
+              <div className="ruling-cols">
+                <div>
+                  <h3 className="eyebrow">Where they agree</h3>
+                  {res.ruling.agree.length ? <ul className="ruling-list agree">{res.ruling.agree.map((x) => <li key={x}><Check size={13} />{x}</li>)}</ul> : <p className="muted">No shared position.</p>}
+                </div>
+                <div>
+                  <h3 className="eyebrow">Where they disagree</h3>
+                  {res.ruling.disagree.length ? <ul className="ruling-list disagree">{res.ruling.disagree.map((x) => <li key={x}><span className="vs">≠</span>{x}</li>)}</ul> : <p className="muted">They don&apos;t really conflict on this question.</p>}
+                </div>
+              </div>
+              {res.ruling.recency && (
+                <div className="recency">
+                  <span className="year-badge">A · {res.a.year || "?"}</span><span className="year-badge">B · {res.b.year || "?"}</span>
+                  <p>{res.ruling.recency}</p>
+                </div>
+              )}
+            </section>
+
+            {res.ruling.gaps.length > 0 && (
+              <section className="card gaps-card">
+                <h2>Gaps in the research</h2>
+                <p className="muted">What this question needs that neither paper establishes.</p>
+                <ul className="gap-list">{res.ruling.gaps.map((g) => <li key={g}>{g}</li>)}</ul>
+              </section>
+            )}
+
+            {res.ruling.topics.length > 0 && (
+              <section className="topics">
+                <h2 className="eyebrow">Potential research topics</h2>
+                <div className="topic-grid">
+                  {res.ruling.topics.map((t) => (
+                    <article key={t.title} className="topic">
+                      <b>{t.title}</b>
+                      <span>{t.why}</span>
+                      <Link className="btn sm" href={answerHref(t.title)}><Search size={13} />Ask about this</Link>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
         )}
       </main>
